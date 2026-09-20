@@ -4,7 +4,7 @@
 用对照实验 + 统计判定回答一个问题：在你手里，A 和 B 两个灵敏度到底哪个更稳——还是根本分不出来。
 
 > 无需安装：桌面版 Chrome / Edge 打开即用。不碰游戏、不读数据、无服务器、无追踪。
-> 在线使用：https://你的用户名.github.io/apex-sens-lab/
+> 在线使用：https://R1kka-ovo.github.io/apex-sens-lab/
 > 离线使用：下载 `index.html` 双击打开即可。
 
 ## 这是什么

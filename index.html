@@ -105,9 +105,9 @@
       <label>游戏 FOV <input type="number" id="fov" value="110" min="70" max="120" step="0.1"></label>
       <label>FOV 数值含义
         <select id="fovBasis">
-          <option value="h169" selected>水平·16:9 基准</option>
-          <option value="h43">水平·4:3 基准</option>
-          <option value="v">垂直</option>
+          <option value="h169">水平 · 16:9 基准（数字标明“16:9 水平”时选）</option>
+          <option value="h43" selected>水平 · 4:3 基准（读游戏内滑块数值选这个）</option>
+          <option value="v">垂直（数字标明为垂直时选）</option>
         </select>
       </label>
     </div>
@@ -128,12 +128,17 @@
       <label><input type="checkbox" id="sfx" checked> 音效</label>
     </div>
     <details>
-      <summary>FOV 说明（自由输入 70–120 · 点开查看）</summary>
+      <summary>FOV 说明：范围与「数值含义」怎么选（点开查看）</summary>
       <p class="hint">
-        · <b>范围</b>：可自由输入、支持 0.1 小数；下限 <b>70</b>（游戏内滑块最低值），上限 <b>120</b>。超范围会被夹回边界，并在下方预览里提示实际生效值。<br>
-        · 若“FOV 数值含义”选择<b>垂直</b>，输入范围自动改为约 <b>42–105</b>（由水平 70–120 换算）。<br>
+        · <b>「数值含义」怎么选——只看你的数字从哪来：</b><br>
+        　① 直接读自<b>游戏内 FOV 滑块</b>（70–110）→ 选「<b>水平 · 4:3 基准</b>」。Apex 的 FOV 按 4:3 基准的水平视野计算（社区实测确认）：同一数字在 16:9 屏幕上实际水平视野更大——滑块 110 换算到 16:9 屏幕约为：水平 <b>124.6°</b>、垂直 <b>93.9°</b>。<br>
+        　② 数字来自攻略 / 换算工具，且<b>标明是“16:9 水平”</b> → 选「水平 · 16:9 基准」。<br>
+        　③ 数字<b>标明是“垂直”</b> → 选「垂直」。<br>
+        · <b>范围</b>：水平 70–120、支持 0.1 小数；选「垂直」时自动切换为 42–105。超范围会被夹回边界，并在下方预览里提示实际生效值。<br>
+        · <b>选错基准的后果</b>：本页的画面缩放与视野范围会和游戏不一致（打靶观感与难度构成随之变化）；但灵敏度结论不受影响——同一会话内所有对比都在同一设置下进行，cm/360 换算也不受基准影响。<br>
+        · <b>小字补充</b>：社区实测认为滑块显示值与引擎真实值有最多约 1.5° 的出入（真实值 = cl_fovScale × 70，如滑块 110 对应真实 4:3 水平 ≈ 108.5°）。本页按你填写的数字直接计算，这点差异对测试没有实际影响。<br>
         · <b>110 以上</b>需要用启动项 / autoexec 执行 cl_fovScale（社区近似：1.00=70 / 1.27=90 / 1.55=110 / 1.70=120，中间值按线性近似）。请先在游戏内确认已生效；社区反馈该做法普通对局可用，但多数锦标赛规则禁止。<br>
-        · 游戏内 FOV 必须与本页选择一致，屏幕上的角度比例才对得上。
+        · 游戏内 FOV 与本页设置不一致时，屏幕上的角度比例对不上——<b>请务必先对齐再开始</b>。
       </p>
     </details>
   </div>
@@ -1973,7 +1978,7 @@ function decide(tr){
   const cands = tr.pool.filter(c=>c.blocks.length>0);
   if (!cands.length) return null;
   const sorted = [...cands].sort((a,b)=> (b.elo-a.elo) || (meanScore(tr,b)-meanScore(tr,a)));
-  const pair = tr.finalPair;
+  let pair = tr.finalPair;
   let rec=null, verdict='fallback', interval=null, st=null;
   if (pair){
     const S = pairDiffStats(tr);
@@ -2636,7 +2641,7 @@ function updatePreview(){
         + '（社区近似：1.00=70 / 1.27=90 / 1.55=110 / 1.70=120），请先在游戏内确认已生效。</span>';
     }
     $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
-      · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}<br>
+      · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}<br>
       <b>预计有效瞄准时长 ≈ ${t.base} 分钟</b>（不含休息；含模型持续推算的份额）；最坏约 ${t.worst} 分钟。${warn}`;
   }catch(e){}
 }

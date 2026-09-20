@@ -1,0 +1,3062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Apex 灵敏度实验台</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0b0e13;color:#dfe6f2;
+    font-family:system-ui,"Segoe UI",Roboto,"Noto Sans SC",sans-serif}
+  .hidden{display:none!important}
+  body.stage-on{overflow:hidden}
+  .stage{position:fixed;inset:0;background:#000;overflow:hidden;cursor:none}
+  .stage canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+  #hud{position:absolute;inset:0;pointer-events:none;font-variant-numeric:tabular-nums}
+  .hud-tl{position:absolute;left:16px;top:12px;font-size:14px;line-height:1.7;text-shadow:0 1px 3px #000}
+  .hud-tr{position:absolute;right:16px;top:12px;font-size:14px;text-align:right;text-shadow:0 1px 3px #000}
+  .hud-bc{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:12px;color:#8fa2bd;
+    text-shadow:0 1px 3px #000;transition:opacity 1.2s}
+  .hud-warn{position:absolute;left:16px;bottom:12px;font-size:12px;color:#ffb454;max-width:46ch;text-shadow:0 1px 3px #000;line-height:1.6}
+  .hud-diag{position:absolute;right:14px;bottom:10px;font-size:11px;color:#4e5e74;text-shadow:0 1px 3px #000}
+  .overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(5,7,10,.95);text-align:center;padding:24px}
+  .overlay h2{margin:0 0 12px;font-size:26px;font-weight:600}
+  .overlay .big{font-size:34px;font-weight:700;margin:8px 0}
+  .overlay .sub{color:#9fb0c8;font-size:15px;line-height:1.9;max-width:72ch;text-align:left}
+  .overlay .bars{font-size:14px;color:#9fb0c8;margin-top:6px;line-height:1.9}
+  .overlay .kv{font-size:18px;margin:14px 0 2px}
+  .overlay .hintline{margin-top:14px;color:#7f93b0;font-size:13px}
+  .panel{max-width:1000px;margin:0 auto;padding:28px 20px 70px}
+  h1{font-size:23px;margin:4px 0 6px}
+  h2{font-size:16px;margin:0 0 8px;color:#cdd9ec}
+  .field{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;margin:9px 0}
+  label{font-size:14px;color:#b9c6da}
+  input[type=number],select{background:#141a24;border:1px solid #263041;color:#e8eef8;
+    border-radius:8px;padding:8px 10px;font-size:15px;min-width:110px}
+  input[type=checkbox]{width:16px;height:16px}
+  .btn{background:#2b6cff;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:16px;cursor:pointer}
+  .btn.secondary{background:#1b2534;color:#cfe0ff}
+  .btn:hover{filter:brightness(1.1)}
+  .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
+  .hint{color:#8b9bb2;font-size:13px;line-height:1.75}
+  .box{background:#10151f;border:1px solid #1d2634;border-radius:12px;padding:14px 16px;margin:12px 0}
+  .box.fatal{border-color:#7a2b2b;background:#1a1013;color:#ffb4b4}
+  .plain{background:#0e1420;border:1px solid #1a2333;border-radius:10px;padding:12px 14px;margin:10px 0}
+  code{background:#151c28;padding:1px 6px;border-radius:6px;font-size:13px}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}
+  th,td{border-bottom:1px solid #1e2836;padding:6px 8px;text-align:left;white-space:nowrap}
+  th{color:#9fb0c8;font-weight:500}
+  canvas.chart{max-width:100%;background:#0d1220;border-radius:12px;margin:14px 0}
+  .dimrow{font-size:13px;color:#9fb0c8;line-height:1.9}
+  details{margin:8px 0}
+  summary{cursor:pointer;color:#9fb0c8;font-size:14px;padding:6px 2px;user-select:none;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:#5b8cff}
+  details[open]>summary::before{content:"▾ "}
+  summary:hover{color:#e8eef8}
+  details[open]>summary{color:#e8eef8;border-bottom:1px solid #1a2333;margin-bottom:8px}
+  .bar{display:inline-block;width:76px;height:8px;background:#1a2333;border-radius:4px;overflow:hidden;vertical-align:middle}
+  .bar>i{display:block;height:100%;transition:width .85s cubic-bezier(.22,.8,.3,1)}
+  .barN{margin-left:6px;font-variant-numeric:tabular-nums}
+  .chartTitle{color:#9fb0c8;font-size:13px;margin:16px 0 0}
+  /* —— 结果页逐个揭晓 —— */
+  .rvBlock{opacity:0;transform:translateY(12px);transition:opacity .5s ease,transform .5s ease}
+  .rvBlock.on{opacity:1;transform:none}
+  .rv{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease}
+  .rv.on{opacity:1;transform:none}
+  .rec{font-size:42px;font-weight:700;color:#ffd166;font-variant-numeric:tabular-nums;
+    opacity:0;transform:scale(.92);text-shadow:none;
+    transition:opacity .5s ease,transform .8s cubic-bezier(.2,.9,.3,1.15),text-shadow 1s ease .2s}
+  .rec.on{opacity:1;transform:scale(1);text-shadow:0 0 16px rgba(255,209,102,.38)}
+  @media (prefers-reduced-motion:reduce){
+    .rvBlock,.rv,.rec{opacity:1;transform:none;transition:none;text-shadow:none}
+    .bar>i{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage" class="stage hidden">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div class="hud-tl" id="hudRound"></div>
+    <div class="hud-tr" id="hudRight"></div>
+    <div class="hud-bc" id="hudHint"></div>
+    <div class="hud-warn" id="hudWarn"></div>
+    <div class="hud-diag" id="hudDiag"></div>
+  </div>
+  <div id="overlay" class="overlay hidden"></div>
+</div>
+
+<section id="setup" class="panel">
+  <h1>Apex 灵敏度实验台</h1>
+  <div id="fatal" class="box fatal hidden"></div>
+  <p class="hint" style="margin:2px 0 0">
+    腰射灵敏度测量 · 鼠标计数 1:1 映射（1 计数 = 0.022°）· 难度 Lv.1–12 自适应 ·
+    标准流程约 15 分钟 · 跟枪类占比约一半（变速 / 快速变向跟枪难度已整体下调）·
+    快速定位拉枪覆盖 ±135° · 目标切换仅限前方 · 模型推算贯穿全程持续更新 · 结果不可分辨时自动深化
+  </p>
+
+  <div class="box">
+    <h2>① 基础设置</h2>
+    <div class="field">
+      <label>鼠标 DPI <input type="number" id="dpi" value="800" min="100" max="6400" step="50"></label>
+      <label>游戏 FOV <input type="number" id="fov" value="110" min="70" max="120" step="0.1"></label>
+      <label>FOV 数值含义
+        <select id="fovBasis">
+          <option value="h169" selected>水平·16:9 基准</option>
+          <option value="h43">水平·4:3 基准</option>
+          <option value="v">垂直</option>
+        </select>
+      </label>
+    </div>
+    <div class="field">
+      <label>分辨率比例
+        <select id="aspect">
+          <option value="1.7777778" selected>16 : 9</option>
+          <option value="1.6">16 : 10</option>
+          <option value="1.3333333">4 : 3</option>
+        </select>
+      </label>
+      <label>显示模式
+        <select id="display">
+          <option value="letterbox" selected>黑边</option>
+          <option value="stretch">拉伸填满</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="sfx" checked> 音效</label>
+    </div>
+    <details>
+      <summary>FOV 说明（自由输入 70–120 · 点开查看）</summary>
+      <p class="hint">
+        · <b>范围</b>：可自由输入、支持 0.1 小数；下限 <b>70</b>（游戏内滑块最低值），上限 <b>120</b>。超范围会被夹回边界，并在下方预览里提示实际生效值。<br>
+        · 若“FOV 数值含义”选择<b>垂直</b>，输入范围自动改为约 <b>42–105</b>（由水平 70–120 换算）。<br>
+        · <b>110 以上</b>需要用启动项 / autoexec 执行 cl_fovScale（社区近似：1.00=70 / 1.27=90 / 1.55=110 / 1.70=120，中间值按线性近似）。请先在游戏内确认已生效；社区反馈该做法普通对局可用，但多数锦标赛规则禁止。<br>
+        · 游戏内 FOV 必须与本页选择一致，屏幕上的角度比例才对得上。
+      </p>
+    </details>
+  </div>
+
+  <div class="box">
+    <h2>② 腰射测试</h2>
+    <div class="field">
+      <label>当前灵敏度 <input type="number" id="sens" placeholder="留空=按 eDPI 1120 估计" min="0.1" max="10" step="0.01"></label>
+      <label>测试长度
+        <select id="rounds">
+          <option value="quick">快速 · 约 8 分钟</option>
+          <option value="std" selected>标准 · 约 15 分钟</option>
+          <option value="full">完整 · 约 18 分钟</option>
+        </select>
+      </label>
+      <label>深化上限
+        <select id="deepenHip">
+          <option value="1">保守 · 1 轮</option>
+          <option value="3" selected>标准 · 3 轮</option>
+          <option value="6">彻底 · 6 轮</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>③ 高级选项</h2>
+    <div class="field">
+      <label><input type="checkbox" id="adaptiveDiff" checked> 自适应难度</label>
+      <label><input type="checkbox" id="modelOn" checked> 瞄准数据建模提议候选（持续推算）</label>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="trackSfx" checked> 跟枪命中时枪声变亮</label>
+      <label><input type="checkbox" id="edgeArrow" checked> 离屏方向箭头</label>
+      <label><input type="checkbox" id="warmAdapt" checked> 自适应热身</label>
+      <label><input type="checkbox" id="preWarmTasks" checked> 新任务先试打</label>
+    </div>
+    <div class="field">
+      <label>漂移校准（锚点）
+        <select id="anchorMode">
+          <option value="std" selected>标准</option>
+          <option value="strict">严格</option>
+          <option value="off">关闭</option>
+        </select>
+      </label>
+      <label>定时休息提醒
+        <select id="restEvery">
+          <option value="3">每 3 分钟</option>
+          <option value="5" selected>每 5 分钟</option>
+          <option value="8">每 8 分钟</option>
+          <option value="0">关闭</option>
+        </select>
+      </label>
+    </div>
+    <details>
+      <summary>这些选项分别做什么？（点开查看）</summary>
+      <p class="hint">
+        · <b>自适应难度</b>：每轮看实际得分——≥86 分难度 +2、≥78 +1、≤44 −1、≤34 −2（偏移 −2~+5）。避免“太简单→区分不出来”和“太难→同样区分不出来”。<br>
+        · <b>瞄准数据建模（持续推算）</b>：采集点击落点误差 / 失误距离 / 过冲 / 修正次数，每累积约 4 段新数据就重新拟合一次；搜索阶段模型候选会直接作为挑战者出场，决胜前后还会各安排一次实测对局。没有可测的新候选时不会产生额外对局（模型可能错，实测说了算）。<br>
+        · <b>跟枪命中时枪声变亮</b>：按住左键持续开火；未命中是较闷的枪声，命中时音色变亮并叠一击清脆提示。关闭后所有枪声相同。<br>
+        · <b>离屏方向箭头</b>：目标在你的视野之外（主要出现在快速定位的广角回合）时，屏幕边缘显示指向箭头。追求更“干净”的画面可以关掉。<br>
+        · <b>漂移校准（锚点）</b>：各阶段前后插入一小段固定任务测量你的状态，用于补偿学习/疲劳带来的分数漂移。<br>
+        · <b>定时休息</b>：按“有效瞄准时间”计时，到点强制建议休息，休息后自动重新校准。<br>
+        · <b>自适应热身</b>：先练到分数稳定再开始计分，把学习曲线最陡的一段排除在外。<br>
+        · <b>新任务试打</b>：每个任务第一次出现前先打一小段（不计分），抵消任务特异性学习效应。
+      </p>
+    </details>
+  </div>
+
+  <div class="box">
+    <details>
+      <summary>测试范围与脚本独立性（拉枪范围 / 脚本不重复 / 跟枪靶 / 枪声）</summary>
+      <p class="hint">
+        · <b>拉枪范围</b>：<b>快速定位</b>的目标可出现在当前朝向 <b>±135°</b>（累计覆盖 270°），连续广角目标交替左右，屏幕边缘箭头指示方向。<b>目标切换只在正前方</b>：两靶都出现在当前朝向 <b>±约 50°</b> 内（任何情况下不超过 90°），不需要大幅转身，考验的是准星在两个目标间的快速转移与精准落点。<br>
+        · <b>脚本独立性</b>：每次计分使用的目标脚本都不同——左右方向严格等量、距离按分位分层抽样后随机打乱；同一会话内不存在重复轨迹，不同会话之间也不同（随机盐）。因此无法靠“记住上一遍的靶位”刷分；A/B 两套脚本的难度构成一致，脚本难度差不会混入灵敏度比较。<br>
+        · <b>唯一例外</b>：状态校准“锚点”故意使用固定脚本——它是测量你状态变化的尺子，必须保持恒定条件；锚点不参与灵敏度比较。<br>
+        · <b>跟枪靶</b>：平滑跟枪（青色）/ 变速跟枪（红色）/ 快速变向跟枪（紫色）使用圆形移动靶，<b>靶圈半径即真实命中判定半径</b>；按住左键命中时靶圈会短暂高亮。<b>变速跟枪与快速变向跟枪的难度已整体下调</b>：靶圈分别约为同难度基准的 1.60 倍与 2.20 倍半径，同时移动速度更低、换向间隔更长、速度跟随更缓——这两项属于“稳定性/覆盖”性质的任务，不是精度任务。<br>
+        · <b>跟枪权重</b>：搜索与决胜阶段中跟枪类任务约占一半；「快速变向跟枪」安排在中高难度轮次。<br>
+        · <b>枪声</b>：跟枪按住左键持续开火（约 630 发/分）；未命中=较闷的枪声，命中=音色更亮并叠一击清脆提示；松开左键没有枪声也不计分。
+      </p>
+    </details>
+    <details>
+      <summary>难度分级说明（Lv.1–12 参数表与推进规则）</summary>
+      <div id="lvTable" class="dimrow"></div>
+    </details>
+    <details>
+      <summary>科学控制说明（抗疲劳 / 抗练习效应）</summary>
+      <p class="hint">
+        ① <b>设计层</b>：决胜用 ABBA 交替（位置均值 2.5），线性疲劳/学习漂移在配对差值中被数学抵消；搜索顺序随机并跨轮次平衡；每段使用不同脚本以消除“同一轨迹打多遍”的练习转移。<br>
+        ② <b>模型层</b>：锚点估计状态漂移并补偿分数（上限 ±15 分）；休息后重建基线。假设：锚点测得的漂移曲线按同一比例外推到其他任务。<br>
+        ③ <b>规则层</b>：定时强制休息；锚点明显下滑时判定疲劳，自动停止深化。<br>
+        ④ <b>边界</b>：练习效应与疲劳只能被削弱与平衡，无法完全消除。最彻底的做法仍是分次测试（同一天内测两轮，或分两天各测一轮）。
+      </p>
+    </details>
+    <details>
+      <summary>开始前请确认（清单）</summary>
+      <p class="hint">
+        ① 用 Chrome / Edge 打开并允许全屏；<br>
+        ② Windows「提高指针精确度」已关闭（设置 → 鼠标 → 其他鼠标选项 → 指针选项）；<br>
+        ③ 游戏内 FOV / 显示比例与本页选择一致；<br>
+        ④ 操作：<b>空格</b> 推进回合，<b>Esc</b> 暂停，<b>R</b> 重开当前段（不计分，重开会更换脚本）；<br>
+        ⑤ 测试进行中鼠标的<b>右键、中键与侧键已被屏蔽</b>（防止浏览器菜单 / 前进后退等指令打断测试）；若不慎退出指针锁定，测试会自动暂停，可点击继续；<br>
+        ⑥ 跟枪任务请<b>持续按住左键</b>开火（松开期间不计分、也没有枪声）；<br>
+        ⑦ 目标切换任务请打<b>高亮</b>的那个靶，命中后另一个靶会变为高亮；<br>
+        ⑧ 屏幕边缘出现箭头时（主要出现在快速定位的广角回合）请转身把目标拉回屏幕内；<br>
+        ⑨ 出现姿势确认清单时请务必照做——本次测试是为了找出最适合<b>平时的你</b>的灵敏度，不要为分数改用不习惯的姿势。
+      </p>
+    </details>
+  </div>
+
+  <div class="row"><button id="startBtn" class="btn">开始（全屏）</button></div>
+  <p class="hint" id="preview"></p>
+</section>
+
+<section id="results" class="panel hidden">
+  <h1 id="hRes" class="rvBlock">测试结果</h1>
+  <p class="hint rv" id="rvIntro" style="margin:2px 0 0">揭晓顺序：对比图表 → 详细数据 → 最终结论（页面底部）</p>
+
+  <div class="cBlock rvBlock hidden" id="cbScore">
+    <p class="chartTitle">① 各候选值平均分（点击类 / 跟枪类）</p>
+    <canvas id="chartScore" class="chart" width="820" height="300"></canvas>
+  </div>
+  <div class="cBlock rvBlock hidden" id="cbElo">
+    <p class="chartTitle">② 对比强度分布（ELO：越高代表在该对比中越占优）</p>
+    <canvas id="resChart" class="chart" width="820" height="300"></canvas>
+  </div>
+  <div class="cBlock rvBlock hidden" id="cbAim">
+    <p class="chartTitle">③ 瞄准指标对比（命中率 / 居中度 / 不过冲 / 开火占比）</p>
+    <canvas id="chartAim" class="chart" width="820" height="300"></canvas>
+  </div>
+  <div class="cBlock rvBlock hidden" id="cbDrift">
+    <p class="chartTitle">④ 状态漂移（锚点分 vs 时间，平直=状态稳定）</p>
+    <canvas id="chartDrift" class="chart" width="820" height="280"></canvas>
+  </div>
+
+  <h2 style="margin-top:22px" id="hDetail" class="rvBlock">详细数据</h2>
+  <details class="rvBlock"><summary>瞄准数据诊断表</summary><div id="resAim"></div></details>
+  <details class="rvBlock"><summary>状态诊断（疲劳 / 学习漂移）</summary><div id="resDiag"></div></details>
+  <details class="rvBlock"><summary>对决与深化记录</summary><div id="resDuels"></div></details>
+  <details class="rvBlock"><summary>搜索与提议回合</summary><div id="resRounds"></div></details>
+  <details class="rvBlock"><summary>候选点明细</summary><div id="resCands"></div></details>
+  <details class="rvBlock"><summary>方法与注意事项</summary><p class="hint" id="resNotes"></p></details>
+
+  <h2 style="margin-top:26px" id="hFinal" class="rvBlock">结论</h2>
+  <div id="resMain"></div>
+
+  <div class="row rvBlock" id="resActions">
+    <button id="deepenBtn" class="btn">再深化一轮（+4 段）</button>
+    <button id="modelBtn" class="btn secondary">模型继续推算（挑战 +8 段）</button>
+    <button id="copyBtn" class="btn secondary">复制结果摘要</button>
+    <button id="restartBtn" class="btn secondary">重新配置</button>
+  </div>
+  <p class="hint" id="refineMsg" style="margin:6px 0 0"></p>
+</section>
+
+<script>
+'use strict';
+/* ============================ 0. 工具 ============================ */
+const fin = (v,d=0)=>Number.isFinite(v)?v:d;
+const DEG_PER_COUNT = 0.022;
+const TASK_NAME = { flick:'快速定位', micro:'微调点击', switch:'目标切换',
+                    track:'平滑跟枪', strafe:'变速跟枪', turn:'快速变向跟枪' };
+const FAMILY    = { flick:'click', micro:'click', switch:'click',
+                    track:'track', strafe:'track', turn:'track' };
+const TRACK_SET = { track:1, strafe:1, turn:1 };
+const isTrackTask = t => !!TRACK_SET[t];
+const rad = d=>d*Math.PI/180, deg = r=>r*180/Math.PI;
+const clamp = (v,a,b)=>Math.min(b,Math.max(a,v));
+const clamp01 = v=>clamp(v,0,1);
+const lerp = (a,b,t)=>a+(b-a)*t;
+const smooth = t=>{t=clamp01(t);return t*t*(3-2*t);};
+const avg = a=>a.length? a.reduce((x,y)=>x+y,0)/a.length : 0;
+const varr = a=>{ if(a.length<2) return 0; const m=avg(a);
+  return a.reduce((s,v)=>s+(v-m)*(v-m),0)/(a.length-1); };
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+const wrap180 = d=>{ while(d>180)d-=360; while(d<-180)d+=360; return d; };
+const round2 = v=>Math.round(v*100)/100;
+const round1 = v=>Math.round(v*10)/10;
+const LV_MAX = 12;
+/* 目标切换：目标只出现在前方，任何情况下都不会超过这个偏角 */
+const SW_YAW_CAP = 88;
+/* 持续模型推算：每累积 minNew 段新数据重拟合；搜索阶段最多直接采用 maxAdopt 次；自动追加实测最多 maxPairs 次 */
+const MODEL = { minNew:4, maxAdopt:2, maxPairs:2 };
+const REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const easeOutCubic = t=>1-Math.pow(1-clamp01(t),3);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+let SESSION_SALT = 0;
+function seedOf(base,k){ return ((base|0) + 9973*(k|0) + SESSION_SALT) | 0; }
+function stratify(n, rng){
+  n = Math.max(1, Math.round(n));
+  const levels = 4, per = Math.max(1, Math.round(n/levels)), arr = [];
+  for (let i=0;i<n;i++){
+    const lv = i % levels, slot = Math.floor(i/levels);
+    const j = Math.min(0.999, (slot + rng())/per);
+    arr.push(clamp01((lv + j)/levels));
+  }
+  for (let i=arr.length-1;i>0;i--){ const k = Math.floor(rng()*(i+1)); const t=arr[i]; arr[i]=arr[k]; arr[k]=t; }
+  return arr;
+}
+function shuffledFlags(n, nTrue, rng){
+  n = Math.max(1, Math.round(n)); nTrue = clamp(Math.round(nTrue),0,n);
+  const arr = [];
+  for (let i=0;i<n;i++) arr.push(i < nTrue);
+  for (let i=arr.length-1;i>0;i--){ const k = Math.floor(rng()*(i+1)); const t=arr[i]; arr[i]=arr[k]; arr[k]=t; }
+  return arr;
+}
+function balancedSigns(n, rng){
+  n = Math.max(1, Math.round(n));
+  const neg = Math.round(n/2), arr = [];
+  for (let i=0;i<n;i++) arr.push(i < neg ? -1 : 1);
+  for (let i=arr.length-1;i>0;i--){ const k = Math.floor(rng()*(i+1)); const t=arr[i]; arr[i]=arr[k]; arr[k]=t; }
+  return arr;
+}
+function det3(m){
+  return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+       - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+       + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+}
+function replaceCol(m, col, v){
+  const out = m.map(r=>r.slice());
+  for (let i=0;i<3;i++) out[i][col] = v[i];
+  return out;
+}
+function quadFit(pts){
+  const n = pts.length; if (n < 3) return null;
+  let Sx=0,Sx2=0,Sx3=0,Sx4=0,Sy=0,Sxy=0,Sx2y=0;
+  for (const p of pts){
+    const x = p[0], y = p[1], x2 = x*x;
+    Sx+=x; Sx2+=x2; Sx3+=x2*x; Sx4+=x2*x2; Sy+=y; Sxy+=x*y; Sx2y+=x2*y;
+  }
+  const M = [[n,Sx,Sx2],[Sx,Sx2,Sx3],[Sx2,Sx3,Sx4]], v = [Sy,Sxy,Sx2y];
+  const D = det3(M); if (Math.abs(D) < 1e-12) return null;
+  const c0 = det3(replaceCol(M,0,v))/D;
+  const c1 = det3(replaceCol(M,1,v))/D;
+  const c2 = det3(replaceCol(M,2,v))/D;
+  const mu = avg(pts.map(p=>p[1]));
+  let sse = 0, sst = 0;
+  for (const p of pts){
+    const yh = c0 + c1*p[0] + c2*p[0]*p[0];
+    sse += (p[1]-yh)*(p[1]-yh);
+    sst += (p[1]-mu)*(p[1]-mu);
+  }
+  return { a:c2, b:c1, c:c0, r2: sst<1e-9 ? 0 : Math.max(0, 1-sse/sst),
+           x0:Math.min.apply(null,pts.map(p=>p[0])), x1:Math.max.apply(null,pts.map(p=>p[0])) };
+}
+function barHTML(v){
+  const p = clamp(fin(v,0),0,100);
+  const col = p>=70?'#7fe0a0':(p>=40?'#ffd166':'#ff9a9a');
+  return `<span class="bar"><i data-w="${p.toFixed(0)}%" style="width:0%;background:${col}"></i></span><span class="barN">${p.toFixed(1)}</span>`;
+}
+
+/* ---------- 结果逐项揭晓 / 自动下滑 / 动画（仅表现层，不影响任何数值与判定） ---------- */
+const chartTokens = new WeakMap();
+function animateChart(canvas, dur, paint){
+  if (!canvas) return;
+  if (REDUCED){ try{ paint(1); }catch(e){} return; }
+  const token = (chartTokens.get(canvas)||0)+1;
+  chartTokens.set(canvas, token);
+  const t0 = performance.now();
+  const tick = now=>{
+    if (chartTokens.get(canvas) !== token) return;
+    const raw = clamp01((now-t0)/Math.max(120, fin(dur,800)));
+    try{ paint(easeOutCubic(raw)); }catch(e){}
+    if (raw < 1) requestAnimationFrame(tick);
+  };
+  try{ paint(0); }catch(e){}
+  requestAnimationFrame(tick);
+}
+function countUp(el, to, decimals, dur){
+  if (!el) return;
+  const nd = Math.max(0, decimals|0);
+  if (REDUCED){ el.textContent = fin(to,0).toFixed(nd); return; }
+  const t0 = performance.now();
+  const tick = now=>{
+    const raw = clamp01((now-t0)/Math.max(120, fin(dur,750)));
+    el.textContent = (fin(to,0)*easeOutCubic(raw)).toFixed(nd);
+    if (raw < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = (0).toFixed(nd);
+  requestAnimationFrame(tick);
+}
+function animateHtmlBars(scope){
+  if (!scope) return;
+  const list = Array.prototype.slice.call(scope.querySelectorAll('.bar>i'));
+  if (!list.length) return;
+  if (REDUCED){ list.forEach(it=>{ it.style.width = it.getAttribute('data-w')||'0%'; }); return; }
+  list.forEach(it=>{ it.style.transition = 'none'; it.style.width = '0%'; });
+  scope.offsetWidth;
+  list.forEach(it=>{ it.style.transition = ''; it.style.width = it.getAttribute('data-w')||'0%'; });
+}
+const easeInOut = t=>{ t = clamp01(t); return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; };
+let scrollSeq = 0, autoScrollOff = false, revealRunning = false;
+function stopAutoScroll(){ autoScrollOff = true; scrollSeq++; }
+function tweenScrollTo(y1, dur){
+  return new Promise(res=>{
+    let y0 = 0;
+    try{ y0 = window.scrollY || window.pageYOffset || 0; }catch(e){}
+    if (REDUCED || !(dur > 0) || !Number.isFinite(y1) || Math.abs(y1 - y0) < 2){
+      try{ window.scrollTo(0, fin(y1,0)); }catch(e){}
+      res(); return;
+    }
+    const token = ++scrollSeq, t0 = performance.now();
+    let done = false;
+    const tick = now=>{
+      if (done) return;
+      if (token !== scrollSeq){ done = true; res(); return; }
+      const p = clamp01((now - t0)/dur);
+      try{ window.scrollTo(0, y0 + (y1 - y0)*easeInOut(p)); }catch(e){}
+      if (p < 1) requestAnimationFrame(tick);
+      else { done = true; res(); }
+    };
+    requestAnimationFrame(tick);
+  });
+}
+function scrollToBeat(el, dur){
+  if (!el || REDUCED || autoScrollOff) return Promise.resolve();
+  try{
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    const rect = el.getBoundingClientRect();
+    const elH = Math.min(Math.max(0, rect.height || 0), vh*0.92);
+    const cur = window.scrollY || window.pageYOffset || 0;
+    const docH = Math.max(document.documentElement.scrollHeight || 0,
+                          (document.body ? document.body.scrollHeight : 0));
+    const maxY = Math.max(0, docH - vh);
+    let y = cur + rect.top - Math.max(10, (vh - elH)/2);
+    y = clamp(y, 0, maxY);
+    return tweenScrollTo(y, fin(dur, 560));
+  }catch(e){ return Promise.resolve(); }
+}
+let revealToken = 0;
+function runReveal(beats){
+  const token = ++revealToken;
+  revealRunning = true;
+  autoScrollOff = false;
+  const forceAll = ()=>{
+    revealRunning = false;
+    document.querySelectorAll('#results .rv, #results .rvBlock, #results .rec').forEach(e=>e.classList.add('on'));
+  };
+  if (REDUCED){
+    beats.forEach(b=>{ try{ if (b.el) b.el.classList.add('on'); }catch(e){} try{ if (b.run) b.run(); }catch(e){} });
+    forceAll();
+    return;
+  }
+  let i = 0;
+  const next = ()=>{
+    if (token !== revealToken){ revealRunning = false; return; }
+    if (i >= beats.length){ revealRunning = false; return; }
+    const b = beats[i++];
+    const go = ()=>{
+      if (token !== revealToken){ revealRunning = false; return; }
+      try{ if (b.el) b.el.classList.add('on'); }catch(e){}
+      try{ if (b.run) b.run(); }catch(e){}
+      setTimeout(next, Math.max(60, fin(b.wait, 340)));
+    };
+    if (b.scrollEl){ scrollToBeat(b.scrollEl, b.scrollDur).then(go); }
+    else go();
+  };
+  setTimeout(next, 150);
+  setTimeout(()=>{ if (token === revealToken && revealRunning) forceAll(); }, 18000);
+}
+addEventListener('wheel', ()=>{ if (revealRunning) stopAutoScroll(); }, {passive:true});
+addEventListener('touchstart', ()=>{ if (revealRunning) stopAutoScroll(); }, {passive:true});
+
+/* ============================ 1. 难度分级 ============================ */
+function dimProgress(L){
+  const x = clamp((fin(L,1)-1)/11, 0, 1);
+  return { size:Math.pow(x,0.85), speed:Math.pow(x,1.00), time:Math.pow(x,1.05),
+           dist:Math.pow(x,1.15), dens:Math.pow(x,1.30) };
+}
+function levelParams(task, L){
+  const d = dimProgress(L);
+  switch(task){
+    case 'flick':  return { R:lerp(3.4,0.85,d.size), dMin:lerp(16,5,d.dist), dMax:lerp(48,14,d.dist),
+                            drift:lerp(2.5,13,d.speed), timeout:lerp(4.0,1.30,d.time),
+                            wideMin:lerp(90,120,d.dist), wideMax:lerp(100,135,d.dist),
+                            wideFrac:lerp(0.05,0.42,d.dist),
+                            trials:Math.round(lerp(12,18,d.dens)) };
+    case 'micro':  /* 靶圈按精度定位需求进一步缩小：2.20° → 0.42° */
+                   return { R:lerp(2.20,0.42,d.size), dMin:lerp(5,1.8,d.dist), dMax:lerp(16,5,d.dist),
+                            drift:lerp(1.2,6.5,d.speed), timeout:lerp(3.0,1.05,d.time),
+                            wideMin:35, wideMax:lerp(45,85,d.dist), wideFrac:lerp(0,0.12,d.dist),
+                            trials:Math.round(lerp(12,18,d.dens)) };
+    case 'switch': /* 取消广角：目标只出现在前方（±约 50°，任何情况下不超过 90°） */
+                   return { R:lerp(3.2,0.9,d.size), gap:lerp(22,5,d.dist),
+                            drift:lerp(2.0,9.0,d.speed), timeout:lerp(3.4,1.25,d.time),
+                            wideFrac:0, wideMin:0, wideMax:0,
+                            trials:Math.round(lerp(14,20,d.dens)) };
+    case 'track':  return { R:lerp(3.0,0.80,d.size), speed:lerp(24,80,d.speed),
+                            duration:Math.round(lerp(16,24,d.dens)) };
+    case 'strafe': /* 难度整体下调：靶圈 = 基准 ×1.60（面积 ≈ 2.6 倍），速度更低、换向更缓 */
+                   return { R:Math.min(4.8, lerp(3.0,0.80,d.size)*1.60), speed:lerp(20,60,d.speed),
+                            revMin:lerp(1.70,0.42,d.time), revMax:lerp(2.50,0.72,d.time),
+                            tau:0.07, duration:Math.round(lerp(16,24,d.dens)) };
+    case 'turn':   /* 难度整体下调：靶圈 = 基准 ×2.20（面积 ≈ 4.8 倍、封顶 5.5°），
+                      速度更低、换向更缓、速度跟随更松 */
+                   { const Rs = lerp(3.0, 0.80, d.size);
+                     return { R: Math.min(5.5, Rs*2.20), speed:lerp(24,66,d.speed),
+                              revMin:lerp(1.15,0.42,d.time), revMax:lerp(1.60,0.66,d.time),
+                              tau:lerp(0.140,0.075,d.speed), duration:Math.round(lerp(16,24,d.dens)) }; }
+  }
+  return {};
+}
+function dimBars(L, task){
+  const d = dimProgress(L);
+  if (task === 'track')  return [['大小',d.size],['速度',d.speed],['起伏',d.time],['时长',d.dens]];
+  if (task === 'strafe') return [['大小',d.size],['速度',d.speed],['变速',d.time],['时长',d.dens]];
+  if (task === 'turn')   return [['大小',d.size],['速度',d.speed],['变向',d.time],['时长',d.dens]];
+  return [['大小',d.size],['漂移',d.speed],['时限',d.time],['距离',d.dist],['密度',d.dens]];
+}
+function barsHTML(L, task){
+  return dimBars(L, task).map(([k,v])=>{
+    const n = clamp(Math.round(v*5),0,5);
+    return `${k} <span style="color:#79d0ff">${'▮'.repeat(n)}</span><span style="color:#2a3546">${'▮'.repeat(5-n)}</span>`;
+  }).join(' &nbsp;·&nbsp; ');
+}
+const levelLine = (L, task)=>`难度 <b>Lv.${fin(L,1)}</b><div class="bars">${barsHTML(L, task)}</div>`;
+function taskHint(task){
+  if (task === 'switch') return '只打<b>高亮</b>的那个靶（命中后另一个靶会变为高亮）；目标都在前方，不需要大幅转身';
+  if (FAMILY[task] === 'click') return '把准星移到目标上按左键（点一下）；侧后方目标请转身拉枪';
+  return '让准星持续覆盖移动目标，期间<b>按住左键</b>持续开火';
+}
+
+/* ============================ 2. 测试计划（标准约 15 分钟） ============================ */
+const ANCHOR_L = 3, ANCHOR_SEED = 424242;
+const PLAN = {
+  quick:{ caps:[0.16,0.12,0.09],
+    search:[['flick',2],['track',4],['micro',5]],
+    duels:[{task:'track',L:8}] },
+  std:{ caps:[0.16,0.125,0.095,0.072,0.055,0.048],
+    search:[['flick',2],['switch',3],['micro',4],['track',5],['strafe',6],['turn',7]],
+    duels:[{task:'flick',L:8},{task:'track',L:9}] },
+  full:{ caps:[0.16,0.13,0.10,0.078,0.06,0.046,0.035,0.028],
+    search:[['flick',2],['switch',3],['micro',4],['track',5],['strafe',6],['turn',7],['track',8],['switch',9]],
+    duels:[{task:'flick',L:9},{task:'track',L:9},{task:'turn',L:9}] }
+};
+
+/* ============================ 3. 配置 / 状态 ============================ */
+const cfg = { dpi:800, startSens:null, fov:110, fovRaw:110, fovClamped:false, fovBasis:'h169',
+  aspect:16/9, display:'letterbox',
+  lenKey:'std', sfx:true, deepenHip:3,
+  anchorMode:'std', restEvery:5, warmAdapt:true, preWarmTasks:true,
+  adaptiveDiff:true, modelOn:true, trackSfx:true, edgeArrow:true };
+
+let baseSens = 1.40, bounds = {lo:0.5, hi:3.0};
+let tracks = {};
+let stageInfo = {phase:'准备', idx:0, total:0};
+
+let sessionClock = 0, lastRestClock = -999, nextRestClock = 1e9, restEverySec = 300;
+
+let cam={yaw:0,pitch:0}, frameD={yaw:0,pitch:0}, gTime=0;
+let view={cw:2,ch:2,Wl:2,Hl:2,sx:1,sy:1,f:500};
+let overlayResolve=null, comfortResolver=null, effects=[];
+const ABORT = new Error('abort');
+
+const eng = { mode:'idle', block:null, raw:null, session:false, abort:false, t0:0,
+              savedMode:null, savedOverlay:null, restartBlock:false, errCount:0, errShown:false, lmb:false };
+
+const $ = id=>document.getElementById(id);
+const stageEl=$('stage'), overlayEl=$('overlay'), cv=$('cv'), ctx=cv.getContext('2d');
+const hudRound=$('hudRound'), hudRight=$('hudRight'), hudWarn=$('hudWarn'),
+      hudHint=$('hudHint'), hudDiag=$('hudDiag');
+
+function showFatal(msg){
+  try{ console.error('[fatal]', msg); }catch(e){}
+  const el = $('fatal');
+  if (el){ el.classList.remove('hidden'); el.textContent = '⚠ ' + String(msg); }
+  try{ if (!stageEl.classList.contains('hidden')) hudWarn.innerHTML = '⚠ ' + String(msg).slice(0,120); }catch(e){}
+}
+window.addEventListener('error', e=>{ if (e && e.message) showFatal('脚本错误：' + e.message); });
+window.addEventListener('unhandledrejection', e=>{
+  const r = e && e.reason;
+  if (r && r === ABORT) return;
+  if (r && r.name === 'AbortError') return;
+  showFatal('异步错误：' + ((r && r.message) || r));
+});
+
+/* ============================ 4. FOV ============================ */
+const cm360 = (dpi,sens)=> 360*2.54/(DEG_PER_COUNT*dpi*sens);
+const sensForCm = (cm,dpi)=> 360*2.54/(DEG_PER_COUNT*dpi*cm);
+function fovLimits(){
+  if (cfg.fovBasis === 'v') return { lo:42, hi:105 };
+  return { lo:70, hi:120 };
+}
+function syncFovInputLimits(){
+  try{
+    const el = $('fov'); if (!el) return;
+    const fl = fovLimits();
+    if (el.getAttribute('min') !== String(fl.lo)) el.setAttribute('min', String(fl.lo));
+    if (el.getAttribute('max') !== String(fl.hi)) el.setAttribute('max', String(fl.hi));
+  }catch(e){}
+}
+function vFovHip(){
+  const f = cfg.fov;
+  if (cfg.fovBasis === 'v') return f;
+  const k = cfg.fovBasis === 'h43' ? 3/4 : 9/16;
+  return deg(2*Math.atan(Math.tan(rad(f)/2)*k));
+}
+function hFovHip(){ return deg(2*Math.atan(Math.tan(rad(vFovHip()/2))*cfg.aspect)); }
+const halfFovs = ()=>({ hHalf:hFovHip()/2, vHalf:vFovHip()/2 });
+
+/* ============================ 5. 布局 ============================ */
+function layout(){
+  if (stageEl.classList.contains('hidden')) return false;
+  const r = stageEl.getBoundingClientRect();
+  let W = r.width, H = r.height;
+  if (!(W>40) || !(H>40)){ W = window.innerWidth; H = window.innerHeight; }
+  if (!(W>40) || !(H>40)) return false;
+  const dpr = Math.min(2, fin(window.devicePixelRatio,1)||1);
+  const a = cfg.aspect;
+  let cssW, cssH;
+  if (cfg.display === 'stretch'){ cssW=W; cssH=H; }
+  else if (W/H > a){ cssH=H; cssW=cssH*a; }
+  else { cssW=W; cssH=cssW/a; }
+  const pxW = Math.max(64, Math.round(cssW*dpr)), pxH = Math.max(64, Math.round(cssH*dpr));
+  cv.style.width = cssW+'px'; cv.style.height = cssH+'px';
+  if (cv.width !== pxW || cv.height !== pxH){ cv.width = pxW; cv.height = pxH; }
+  const Hl = cv.height, Wl = Hl*a;
+  view = { cw:cv.width, ch:cv.height, Wl, Hl, sx:cv.width/Wl, sy:1,
+           f:(Hl/2)/Math.tan(rad(vFovHip()/2)) };
+  return true;
+}
+let wdCounter = 0;
+function watchdog(){
+  if (++wdCounter % 20) return;
+  if (stageEl.classList.contains('hidden')) return;
+  const r = stageEl.getBoundingClientRect();
+  if (!(r.width>40) || !(r.height>40)) return;
+  if (cv.width < 64 || cv.height < 64){ layout(); return; }
+  const a = cfg.aspect;
+  const expW = cfg.display==='stretch' ? r.width : Math.min(r.width, r.height*a);
+  const curW = parseFloat(cv.style.width) || 0;
+  if (Math.abs(expW - curW) > 3) layout();
+}
+addEventListener('resize', ()=>{ layout(); });
+addEventListener('fullscreenchange', ()=>{ setTimeout(layout, 60); setTimeout(layout, 320); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) setTimeout(layout,80); });
+addEventListener('focus', ()=>setTimeout(layout,80));
+
+/* ============================ 6. 相机 / 投影 / 清洗 ============================ */
+function basisV(){
+  const t = rad(fin(cam.yaw,0)), p = rad(clamp(fin(cam.pitch,0),-88,88));
+  return {
+    F:[Math.sin(t)*Math.cos(p), Math.sin(p),  Math.cos(t)*Math.cos(p)],
+    R:[Math.cos(t), 0, -Math.sin(t)],
+    U:[-Math.sin(p)*Math.sin(t), Math.cos(p), -Math.sin(p)*Math.cos(t)]
+  };
+}
+const dirOf = (yaw,pitch)=>{
+  const t = rad(fin(yaw,0)), p = rad(clamp(fin(pitch,0),-89,89));
+  return [Math.sin(t)*Math.cos(p), Math.sin(p), Math.cos(t)*Math.cos(p)];
+};
+const sphToWorld = (yaw,pitch,dist)=>{
+  const d = dirOf(yaw,pitch), r = clamp(fin(dist,18),1,80);
+  return [d[0]*r, d[1]*r, d[2]*r];
+};
+function project(p, B){
+  B = B || basisV();
+  const xc = p[0]*B.R[0]+p[1]*B.R[1]+p[2]*B.R[2];
+  const yc = p[0]*B.U[0]+p[1]*B.U[1]+p[2]*B.U[2];
+  const zc = p[0]*B.F[0]+p[1]*B.F[1]+p[2]*B.F[2];
+  if (!Number.isFinite(xc)||!Number.isFinite(yc)||!Number.isFinite(zc)) return null;
+  if (zc < 0.25) return null;
+  return { x:view.Wl/2 + view.f*xc/zc, y:view.Hl/2 - view.f*yc/zc, s:view.f/zc, zc };
+}
+function angTo(t){
+  const F = basisV().F, d = dirOf(t.yaw, t.pitch);
+  return deg(Math.acos(clamp(d[0]*F[0]+d[1]*F[1]+d[2]*F[2], -1, 1)));
+}
+const errVec = t => [wrap180(fin(t.yaw,0) - cam.yaw), fin(t.pitch,0) - cam.pitch];
+const targetPx = R => Math.max(5, view.f*Math.tan(rad(clamp(fin(R,2),0.02,30))));
+function sanitize(){
+  cam.yaw = fin(cam.yaw, 0);
+  cam.pitch = clamp(fin(cam.pitch, 0), -85, 85);
+  const B = eng.block; if (!B) return;
+  B.sensEff = clamp(fin(B.sensEff, 1), 1e-5, 100);
+  const list = B.targets;
+  for (let i=0;i<list.length;i++){
+    const t = list[i];
+    t.yaw = fin(t.yaw, 0); t.pitch = clamp(fin(t.pitch, 0), -80, 80);
+    t.dist = clamp(fin(t.dist, 18), 3, 80);
+    t.R = clamp(fin(t.R, 2), 0.02, 30);
+    t.alpha = clamp01(fin(t.alpha, 1));
+    if (t.base){ t.base.yaw = fin(t.base.yaw,0); t.base.pitch = clamp(fin(t.base.pitch,0),-60,60); }
+    if (t.drift){
+      t.drift.amp = clamp(fin(t.drift.amp,0),0,70);
+      t.drift.ampP = clamp(fin(t.drift.ampP,0),0,70);
+      t.drift.w = clamp(fin(t.drift.w,1),0.05,20);
+      t.drift.ph = fin(t.drift.ph,0);
+    }
+    if (typeof t.vy === 'number') t.vy = clamp(fin(t.vy,0), -400, 400);
+    if (typeof t.tgtV === 'number') t.tgtV = clamp(fin(t.tgtV,0), -400, 400);
+    if (typeof t.tau === 'number') t.tau = clamp(fin(t.tau,0.02), 0.02, 0.5);
+  }
+}
+
+/* ============================ 7. 输入 / 锁定 ============================ */
+function onMove(e){
+  if (eng.mode !== 'block' || !eng.block || document.pointerLockElement !== stageEl) return;
+  const k = DEG_PER_COUNT * eng.block.sensEff;
+  const dy = k*fin(e.movementX,0), dp = k*fin(e.movementY,0);
+  cam.yaw += dy;
+  cam.pitch = clamp(cam.pitch - dp, -85, 85);
+  frameD.yaw += dy; frameD.pitch -= dp;
+  eng.block.pathAccum += Math.hypot(dy, dp);
+}
+function uiLocked(){ return eng.session || !stageEl.classList.contains('hidden'); }
+function blockNonLeft(e){
+  if (!e || e.button === 0) return false;
+  if (!uiLocked()) return false;
+  try{ e.preventDefault(); e.stopPropagation(); }catch(err){}
+  return true;
+}
+addEventListener('mousemove', onMove);
+addEventListener('mousedown', e=>{
+  if (blockNonLeft(e)) return;
+  if (eng.mode !== 'block') return;
+  eng.lmb = true;
+  const B = eng.block;
+  if (B && !isTrackTask(B.task)) fire();
+}, true);
+addEventListener('mouseup', e=>{
+  if (blockNonLeft(e)) return;
+  eng.lmb = false;
+}, true);
+addEventListener('auxclick', e=>{ blockNonLeft(e); }, true);
+addEventListener('contextmenu', e=>{
+  if (!uiLocked()) return;
+  try{ e.preventDefault(); e.stopPropagation(); }catch(err){}
+}, true);
+addEventListener('dragstart', e=>{ if (uiLocked()){ try{ e.preventDefault(); }catch(err){} } }, true);
+addEventListener('blur', ()=>{ eng.lmb = false; });
+addEventListener('beforeunload', e=>{
+  if (eng.session && !eng.abort){
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
+
+function onKey(e){
+  if (e.code === 'Space'){
+    e.preventDefault();
+    if (overlayResolve) overlayResolve();
+    else if (comfortResolver) comfortResolver('Digit3');
+  } else if (e.code === 'Enter'){
+    if (eng.mode === 'paused') resume();
+    else if (comfortResolver) comfortResolver('Digit3');
+  } else if (e.code === 'KeyR'){
+    if (eng.mode === 'block' && eng.block) eng.restartBlock = true;
+  } else if (comfortResolver && ['Digit1','Digit2','Digit3'].includes(e.code)) comfortResolver(e.code);
+}
+addEventListener('keydown', onKey);
+
+async function lockStage(){
+  try{
+    const r = stageEl.requestPointerLock({unadjustedMovement:true});
+    if (r && typeof r.then === 'function'){
+      await r;
+      if (document.pointerLockElement === stageEl){ eng.raw='yes'; return true; }
+    }
+    return document.pointerLockElement === stageEl;
+  }catch(err){
+    try{
+      const p2 = stageEl.requestPointerLock();
+      if (p2 && typeof p2.catch === 'function') p2.catch(()=>{});
+    }catch(e2){ return false; }
+    await sleep(120);
+    if (document.pointerLockElement === stageEl){ if (eng.raw!=='yes') eng.raw='unknown'; return true; }
+    return false;
+  }
+}
+function waitForLock(){
+  return new Promise(res=>{
+    overlayEl.innerHTML = `<h2>需要点击以锁定鼠标</h2>
+      <div class="sub" style="text-align:center">点击画面任意处；若第一次没成功，再点一次即可。锁定成功后本提示会自动消失（右下角显示 LOCK✓）。</div>`;
+    overlayEl.classList.remove('hidden');
+    let done = false;
+    const finish = ()=>{ if(done) return; done = true;
+      document.removeEventListener('pointerlockchange', check);
+      overlayEl.removeEventListener('click', onClick);
+      overlayEl.classList.add('hidden'); res(); };
+    const check = ()=>{ if (document.pointerLockElement === stageEl) finish(); };
+    const onClick = async ()=>{ await lockStage(); setTimeout(check, 150); };
+    document.addEventListener('pointerlockchange', check);
+    overlayEl.addEventListener('click', onClick);
+    lockStage().then(()=>setTimeout(check,150));
+  });
+}
+document.addEventListener('pointerlockchange', ()=>{
+  eng.lmb = false;
+  if (document.pointerLockElement !== stageEl && eng.session && !eng.abort &&
+      ['block','wait','transition'].includes(eng.mode)){
+    showPause();
+  }
+});
+async function goFullscreen(){ try{ await stageEl.requestFullscreen({navigationUI:'hide'}); }catch(e){} }
+function exitFullscreen(){
+  try{
+    if (document.fullscreenElement){
+      const p = document.exitFullscreen();
+      if (p && typeof p.catch === 'function') p.catch(()=>{});
+    }
+  }catch(e){}
+}
+
+/* ============================ 8. 音效 ============================ */
+let actx = null;
+let shotBuf = null;
+function ensureAudio(){
+  if (!cfg.sfx) return;
+  if (!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  if (actx && actx.state === 'suspended'){ actx.resume().catch(()=>{}); }
+}
+function sfxTone(freq, dur, gainVal, type){
+  if (!cfg.sfx || !actx) return;
+  try{
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'square';
+    o.frequency.value = freq;
+    o.connect(g); g.connect(actx.destination);
+    const t = actx.currentTime;
+    g.gain.setValueAtTime(gainVal, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.start(t); o.stop(t+dur+0.01);
+  }catch(e){}
+}
+function sfx(kind){
+  switch(kind){
+    case 'hit':    sfxTone(1400, 0.06, 0.030); break;
+    case 'miss':   sfxTone(240,  0.10, 0.028); break;
+    case 'deepen': sfxTone(900,  0.08, 0.020); break;
+    default:       sfxTone(600,  0.07, 0.020);
+  }
+}
+function ensureShotBuf(){
+  if (!actx || shotBuf) return;
+  try{
+    const len = Math.floor(actx.sampleRate * 0.12);
+    shotBuf = actx.createBuffer(1, len, actx.sampleRate);
+    const d = shotBuf.getChannelData(0);
+    for (let i=0;i<len;i++){ d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.2); }
+  }catch(e){ shotBuf = null; }
+}
+function sfxShot(bright){
+  if (!cfg.sfx || !actx) return;
+  try{
+    ensureShotBuf();
+    if (!shotBuf) return;
+    const t = actx.currentTime;
+    const src = actx.createBufferSource(); src.buffer = shotBuf;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.value = bright ? 4200 : 850;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(bright ? 0.075 : 0.055, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (bright ? 0.085 : 0.12));
+    src.connect(lp); lp.connect(g); g.connect(actx.destination);
+    src.start(t); src.stop(t + 0.15);
+    if (bright){
+      const o = actx.createOscillator(), g2 = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = 1650;
+      g2.gain.setValueAtTime(0.03, t);
+      g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      o.connect(g2); g2.connect(actx.destination);
+      o.start(t); o.stop(t + 0.06);
+    }
+  }catch(e){}
+}
+function addHitFx(t){
+  const w = sphToWorld(t.yaw, t.pitch, t.dist);
+  effects.push({ pos:w, t0:gTime, rpx: targetPx(t.R) });
+}
+function trackFire(){
+  const B = eng.block; if (!B) return;
+  if (!isTrackTask(B.task)) return;
+  if (B.ending) return;
+  if (!eng.lmb) return;
+  const rate = 0.095;
+  if (gTime - fin(B.lastTick,-9) < rate) return;
+  B.lastTick = gTime;
+  const t = B.targets.find(x=>x.state === 'active' || x.state === 'spawn');
+  const on = !!(t && angTo(t) <= t.R);
+  B.shotN = (B.shotN||0) + 1;
+  if (on) B.shotOn = (B.shotOn||0) + 1;
+  B.onTarget = on;
+  sfxShot(cfg.trackSfx ? on : false);
+}
+
+/* ============================ 9. 脚本 ============================ */
+function buildScript(task, p, seed){
+  const rng = mulberry32(seed);
+  const isSw = (task === 'switch');
+  /* 广角只用于快速定位；switch 的条目按“最多每次失误消耗 2 条”预算，长度翻倍 */
+  const n = isSw ? (p.trials||10)*2 + 8 : (p.trials||10);
+  const wf = isSw ? 0 : clamp01(fin(p.wideFrac,0));
+  const nWide = clamp(Math.round(n*wf), 0, n);
+  const wideFlag = shuffledFlags(n, nWide, rng);
+  const qsNorm = stratify(n - nWide, rng);
+  const qsWide = stratify(Math.max(1, nWide), rng);
+  const signsNorm = balancedSigns(n - nWide, rng);
+  const wMin = fin(p.wideMin,95), wMax = fin(p.wideMax,135);
+  let iN = 0, iW = 0, wideSign = rng() < 0.5 ? -1 : 1;
+  const arr = [];
+  for (let i=0;i<n;i++){
+    const wantVert = task==='micro' ? (i%3===2) : (i%4===3);
+    const e = { sign:1, d:0, pitchFrac:0, dist:lerp(13,28,rng()), dw:lerp(0.55,1.05,rng()),
+      dph:rng()*6.283, gapMul:lerp(0.85,1.25,rng()), wide:false };
+    if (wideFlag[i]){
+      wideSign = -wideSign;
+      e.wide = true; e.sign = wideSign;
+      e.d = clamp(lerp(wMin, wMax, qsWide[iW % qsWide.length]), 8, 135); iW++;
+      e.pitchFrac = lerp(-0.4, 0.4, rng());
+    } else {
+      e.sign = signsNorm[iN % signsNorm.length];
+      e.d = lerp(p.dMin||0, p.dMax||0, qsNorm[iN % qsNorm.length]); iN++;
+      e.pitchFrac = wantVert ? lerp(0.45,0.9,rng()) : lerp(-0.3,0.3,rng());
+    }
+    arr.push(e);
+  }
+  return arr;
+}
+function buildTrackPath(p, seed){
+  const rng = mulberry32(seed*7+3), {hHalf,vHalf} = halfFovs();
+  const R = p.R||2;
+  const capY = Math.max(R*1.5, Math.min(42, hHalf-R-1.5*R));
+  const capP = Math.max(R*1.2, Math.min(24, vHalf-R-1.5*R));
+  const w1=0.55, w2=1.12, w3=0.62, w4=1.18;
+  let A1=0.6*p.speed/w1, A2=0.4*p.speed/w2, tot=A1+A2;
+  if (tot>capY){ const k=capY/tot; A1*=k; A2*=k; tot=capY; }
+  let B1=0.33*p.speed/w3, B2=0.22*p.speed/w4, totP=B1+B2, capP2=capP*0.8;
+  if (totP>capP2){ const k=capP2/totP; B1*=k; B2*=k; totP=capP2; }
+  return { yaw0:(rng()*2-1)*Math.max(0,capY-tot), cy1:A1, w1, ph1:rng()*6.283,
+           cy2:A2, w2, ph2:rng()*6.283,
+           pitch0:(rng()*2-1)*Math.max(0,capP-totP)*0.6, cp1:B1, w3, ph3:rng()*6.283,
+           cp2:B2, w4, ph4:rng()*6.283 };
+}
+
+/* ============================ 10. 目标 ============================ */
+function initTrialParams(t){
+  const B = eng.block;
+  t.D0 = angTo(t); t.e0 = errVec(t); t.projMin = Infinity; t.prevSign = undefined;
+  t.prevProj = undefined; t.reversals = 0; t.pathStart = B.pathAccum; t.activeAt = gTime;
+}
+function spawnFromScript(){
+  const B = eng.block, pl = B.script[B.spawned++];
+  if (!pl) return;
+  const {hHalf,vHalf} = halfFovs();
+  const R = B.p.R;
+  const maxYaw = Math.max(R*1.2, hHalf-R-1.5*R);
+  const maxPitch = Math.max(R*0.8, Math.min(vHalf-R-1.5*R, 26));
+  let dYaw = pl.sign*pl.d;
+  if (pl.wide) dYaw = clamp(dYaw, -135, 135);
+  else if (Math.abs(dYaw) > maxYaw) dYaw = Math.sign(dYaw)*maxYaw;
+  let dPitch = pl.wide ? pl.pitchFrac*maxPitch : dYaw*pl.pitchFrac;
+  dPitch = clamp(dPitch, -maxPitch, maxPitch);
+  const w = Math.max(0.2, pl.dw), amp = Math.min(8, (B.p.drift||3)/w);
+  const t = { kind:'click', R, dist:pl.dist,
+    base:{yaw:cam.yaw+dYaw, pitch:clamp(cam.pitch+dPitch,-26,26)},
+    yaw:0, pitch:0, drift:{amp, ampP:amp*0.5, w, ph:pl.dph},
+    state:'spawn', spawnAt:gTime, alpha:0 };
+  t.yaw = t.base.yaw; t.pitch = t.base.pitch;
+  initTrialParams(t);
+  B.targets.push(t);
+}
+function spawnTrackTarget(){
+  const B = eng.block, P = B.path;
+  B.targets.push({ kind:'track', R:B.p.R, dist:18, path:P, yaw:P.yaw0, pitch:P.pitch0,
+    state:'spawn', spawnAt:gTime, alpha:0 });
+}
+function spawnMover(kind){
+  const B = eng.block, p = B.p, {hHalf,vHalf} = halfFovs();
+  const rng = mulberry32(B.seed*13+5);
+  const R = p.R;
+  const maxY = Math.max(R, Math.min(hHalf-R-1.5*R, 40));
+  const maxP = Math.max(R*0.8, Math.min(vHalf-R-1.5*R, 20));
+  const dir = rng()<0.5?-1:1;
+  B.targets.push({ kind, R, dist:lerp(16,26,rng()),
+    state:'spawn', spawnAt:gTime, alpha:0,
+    yaw:(rng()*2-1)*maxY*0.55, pitch:(rng()*2-1)*maxP*0.6, pitch0:(rng()*2-1)*maxP*0.5,
+    vy:0, tgtV:dir*p.speed, tau: fin(p.tau,0.07),
+    nextFlip:gTime+0.8+lerp(p.revMin,p.revMax,rng()),
+    pitchAmp:Math.min(6, maxP*0.6), pitchW:lerp(0.5,0.9,rng()), pitchPh:rng()*6.283,
+    yawLimit:maxY, rng });
+}
+/* 脚本意外耗尽时的兜底：按同一分布实时生成（左右交替，避免固定一侧堆积） */
+function swPlanFallback(B){
+  const rng = mulberry32(seedOf(fin(B.seed,1), 31337 + fin(B.spawned,0)));
+  B.fbSign = -(fin(B.fbSign,1));
+  return { sign:B.fbSign, dist:lerp(13,28,rng()), dw:lerp(0.55,1.05,rng()),
+           dph:rng()*6.283, pitchFrac:lerp(-0.28,0.28,rng()),
+           gapMul:lerp(0.85,1.25,rng()), wide:false };
+}
+/* 目标切换：目标只出现在前方（yaw 偏角被限制在 ±min(视野内,88°)） */
+function swSpawn(avoid){
+  const B = eng.block, p = B.p;
+  const pl = B.script[B.spawned++] || swPlanFallback(B);
+  const {hHalf,vHalf} = halfFovs();
+  const R = p.R;
+  const maxY = Math.max(R, Math.min(hHalf - R - 1.5*R, SW_YAW_CAP));
+  const maxP = Math.max(R*0.8, Math.min(vHalf - R - 1.5*R, 24));
+  let yaw, pitch;
+  if (avoid && avoid.state !== 'dying'){
+    const gap = (p.gap||10)*pl.gapMul;
+    let sgn = pl.sign;
+    yaw = avoid.yaw + sgn*gap;
+    if (Math.abs(yaw) > maxY){ sgn = -sgn; yaw = avoid.yaw + sgn*gap; }
+    if (Math.abs(yaw) > maxY){ yaw = clamp(avoid.yaw - sgn*gap*0.7, -maxY, maxY); }
+    pitch = clamp(avoid.pitch + pl.pitchFrac*maxP, -maxP, maxP);
+  } else {
+    yaw = pl.sign*maxY*lerp(0.25,0.8,Math.abs(pl.pitchFrac));
+    pitch = clamp(pl.pitchFrac*maxP*0.8, -maxP, maxP);
+  }
+  yaw = clamp(yaw, -SW_YAW_CAP, SW_YAW_CAP);
+  const w = Math.max(0.2, pl.dw), amp = Math.min(7, (p.drift||3)/w);
+  const t = { kind:'switch', R, dist:pl.dist, isCurrent:false,
+    base:{yaw,pitch}, yaw, pitch, drift:{amp, ampP:amp*0.5, w, ph:pl.dph},
+    state:'spawn', spawnAt:gTime, alpha:0 };
+  B.targets.push(t);
+  return t;
+}
+function spawnSwitchPair(initial){
+  const B = eng.block;
+  if (initial){
+    const t1 = swSpawn(null); t1.isCurrent = true; initTrialParams(t1); swSpawn(t1);
+  } else {
+    /* 命中后补位：贴着“当前靶”生成，而不是数组里的第一个 */
+    const cur = B.targets.find(t=>t.isCurrent && t.state !== 'dying');
+    const alive = B.targets.filter(t=>t.state !== 'dying');
+    swSpawn(cur || alive[0] || null);
+  }
+}
+function makeCurrent(t){ t.isCurrent = true; initTrialParams(t); }
+
+function updateTargets(dt){
+  const B = eng.block; if (!B) return;
+  for (let i=B.targets.length-1;i>=0;i--){
+    const t = B.targets[i];
+    if (t.state === 'dying'){
+      const k = (gTime - fin(t.dieAt,gTime))/0.28;
+      t.alpha = clamp01(1-k);
+      if (k >= 1){ B.targets.splice(i,1); continue; }
+    }
+    if (t.state === 'spawn'){
+      const k = (gTime - t.spawnAt)/0.32;
+      t.alpha = smooth(k);
+      if (k >= 1){
+        t.state = 'active';
+        if (isTrackTask(B.task)){ t.activeAt = gTime; t.prevYaw=t.yaw; t.prevPitch=t.pitch; }
+      }
+    }
+    const since = gTime - t.spawnAt;
+    const ramp = smooth(clamp01(since/1.0));
+    if (B.task === 'track' && t.path){
+      const P = t.path;
+      const kf = lerp(0.8,1.15, clamp01(B.elapsed/Math.max(1,B.p.duration)));
+      t.yaw   = P.yaw0   + ramp*kf*(P.cy1*Math.sin(P.w1*since+P.ph1)+P.cy2*Math.sin(P.w2*since+P.ph2));
+      t.pitch = P.pitch0 + ramp*kf*(P.cp1*Math.sin(P.w3*since+P.ph3)+P.cp2*Math.sin(P.w4*since+P.ph4));
+    } else if (t.kind === 'strafe' || t.kind === 'turn'){
+      const kf = lerp(0.85,1.1, clamp01(B.elapsed/Math.max(1,B.p.duration)));
+      if (since >= 0.6 && gTime >= t.nextFlip){
+        const cv0 = t.tgtV || B.p.speed*0.8;
+        t.tgtV = -Math.sign(cv0)*kf*B.p.speed*lerp(0.75,1.2,t.rng());
+        t.nextFlip = gTime + lerp(B.p.revMin, B.p.revMax, t.rng());
+      }
+      t.vy += ((t.tgtV||0) - t.vy) * clamp01(dt/fin(t.tau,0.07));
+      t.yaw += t.vy*dt;
+      if (t.yaw >  t.yawLimit){ t.yaw =  t.yawLimit; if (t.vy>0) t.tgtV = -Math.abs(t.tgtV||B.p.speed*0.8); }
+      if (t.yaw < -t.yawLimit){ t.yaw = -t.yawLimit; if (t.vy<0) t.tgtV =  Math.abs(t.tgtV||B.p.speed*0.8); }
+      t.pitch = t.pitch0 + ramp*t.pitchAmp*Math.sin(t.pitchW*since+t.pitchPh);
+    } else if (t.drift){
+      t.yaw   = t.base.yaw   + ramp*t.drift.amp *Math.sin(t.drift.w*since+t.drift.ph);
+      t.pitch = t.base.pitch + ramp*t.drift.ampP*Math.sin(t.drift.w*0.73*since+t.drift.ph*1.37+1.1);
+    }
+    if (isTrackTask(B.task)){
+      if (t.state === 'active') sampleTracking(t, dt);
+    } else {
+      sampleTrial(t);
+    }
+  }
+}
+function sampleTrial(t){
+  if (!Number.isFinite(t.e0?.[0]) || !Number.isFinite(t.e0?.[1])) return;
+  const e = errVec(t), e0 = t.e0, n0 = Math.hypot(e0[0],e0[1]);
+  if (n0 < 0.2) return;
+  const u = [e0[0]/n0, e0[1]/n0];
+  const proj = e[0]*u[0] + e[1]*u[1];
+  if (proj < t.projMin) t.projMin = proj;
+  const d = proj - (t.prevProj === undefined ? proj : t.prevProj);
+  if (Math.abs(d) > 0.03){
+    const sg = Math.sign(d);
+    if (t.prevSign !== undefined && sg !== t.prevSign) t.reversals++;
+    t.prevSign = sg;
+  }
+  t.prevProj = proj;
+}
+function sampleTracking(t, dt){
+  const B = eng.block;
+  if (!eng.lmb) return;
+  if (gTime - fin(t.activeAt,gTime) < 0.5) return;
+  const err = angTo(t);
+  const close = err <= t.R ? 1 : Math.exp(-(err/t.R - 1)*1.6);
+  const dtc = Math.max(dt, 1e-3);
+  const vU = [frameD.yaw/dtc, frameD.pitch/dtc];
+  const vT = [(t.yaw-(t.prevYaw ?? t.yaw))/dtc, (t.pitch-(t.prevPitch ?? t.pitch))/dtc];
+  t.prevYaw = t.yaw; t.prevPitch = t.pitch;
+  const mT = Math.hypot(vT[0], vT[1]);
+  const match = clamp01(1 - Math.hypot(vU[0]-vT[0], vU[1]-vT[1])/(mT+25));
+  B.samples.push({ err, close, match });
+}
+
+/* ============================ 11. 射击 / 评分 ============================ */
+function findHitTargetEx(){
+  const B = eng.block;
+  let best=null, bestA=1e9, minA=1e9, minR=1;
+  for (const t of B.targets){
+    if (t.state !== 'active' && t.state !== 'spawn') continue;
+    if (B.task === 'switch' && !t.isCurrent) continue;
+    const a = angTo(t);
+    if (a < minA){ minA = a; minR = Math.max(0.1, t.R); }
+    if (a <= t.R && a < bestA){ best=t; bestA=a; }
+  }
+  return { t:best, a:bestA, minA: minA===1e9 ? null : minA, minR };
+}
+function fire(){
+  const B = eng.block; if (!B) return;
+  if (isTrackTask(B.task)) return;
+  B.shots++;
+  const res = findHitTargetEx();
+  if (res.t) hitTarget(res.t, res.a);
+  else {
+    B.missShots++;
+    if (res.minA !== null){
+      B.missAngSum += res.minA; B.missAngN++;
+      B.missNormSum += res.minA/res.minR; B.missNormN++;
+    }
+  }
+}
+function trialScore(o){
+  const Tideal = 0.20 + o.D0/430;
+  const speed = Math.pow(clamp01(Tideal/Math.max(0.05, o.tt)), 1.40);
+  const prec  = 1/(1 + 2.6*o.overRatio + 0.35*Math.max(0, o.reversals-1));
+  const cent  = Math.pow(clamp01(1 - fin(o.cent,0)), 1.25);
+  const eff   = clamp01(o.pathEff);
+  return 100*(0.40*speed + 0.24*prec + 0.19*cent + 0.17*eff);
+}
+function hitTarget(t, a){
+  const B = eng.block;
+  const tt = gTime - fin(t.activeAt,gTime);
+  const pathLen = Math.max(1e-3, B.pathAccum - t.pathStart);
+  const e0n = Math.hypot(t.e0[0], t.e0[1]);
+  const over = Math.max(0, -t.projMin);
+  const overRatio = e0n > 0.3 ? clamp(over/e0n, 0, 3) : 0;
+  const pathEff = t.D0 > 2 ? clamp(t.D0/pathLen, 0, 1) : 1;
+  const cent = clamp01(clamp(fin(a, t.R), 0, t.R)/Math.max(0.05, t.R));
+  const s = trialScore({tt, D0:t.D0, overRatio, pathEff, reversals:t.reversals, cent});
+  B.trials.push({ hit:true, tt, D0:t.D0, overRatio, pathEff, reversals:t.reversals, cent, s });
+  B.hits++; B.trialsDone++;
+  addHitFx(t); sfx('hit');
+  t.state = 'dying'; t.dieAt = gTime;
+  if (B.task === 'switch'){
+    t.isCurrent = false;
+    const other = B.targets.find(o=>o!==t && o.state!=='dying');
+    if (other) makeCurrent(other);
+    spawnSwitchPair(false);
+  }
+}
+function recordMiss(t){
+  const B = eng.block;
+  B.trials.push({ hit:false, tt:B.p.timeout, D0:t.D0||0, overRatio:0, pathEff:0,
+                  reversals:t.reversals||0, cent:1, s:0 });
+  sfx('miss');
+  t.state = 'dying'; t.dieAt = gTime; B.trialsDone++;
+}
+
+/* ============================ 12. 段执行 ============================ */
+function runBlock(spec){
+  return new Promise((resolve)=>{
+    if (eng.abort) return resolve({ aborted:true, score:0, stats:{ aborted:true } });
+    cam.yaw=0; cam.pitch=0; gTime=0; frameD.yaw=frameD.pitch=0; eng.lmb = false;
+    const L = clamp(fin(spec.L,5),1,LV_MAX);
+    const p = Object.assign({}, levelParams(spec.task, L), spec.over||{});
+    const sensEff = clamp(fin(spec.sens,1), 1e-5, 100);
+    const B = { task:spec.task, L, p, seed:spec.seed, sensEff,
+      elapsed:0, ending:false, endAt:Infinity, skippedRun:false, spawned:0, trialsDone:0,
+      shots:0, hits:0, missShots:0, missAngSum:0, missAngN:0, missNormSum:0, missNormN:0,
+      fireOn:0, fireAll:0, shotN:0, shotOn:0, onTarget:false, lastTick:-9, fbSign:1,
+      trials:[], samples:[], pathAccum:0, targets:[], resolve };
+    eng.block = B; effects.length = 0; eng.mode = 'block';
+    layout();
+    if (B.task === 'track'){ B.path = buildTrackPath(p, B.seed); spawnTrackTarget(); }
+    else if (B.task === 'strafe' || B.task === 'turn'){ spawnMover(B.task); }
+    else if (B.task === 'switch'){ B.script = buildScript('switch', p, B.seed); spawnSwitchPair(true); }
+    else { B.script = buildScript(B.task, p, B.seed); }
+  });
+}
+async function execBlock(spec){
+  for(;;){
+    const r = await runBlock(spec);
+    if (!r) return { aborted:true, score:0, stats:{ aborted:true } };
+    if (r.aborted) return r;
+    if (!r.skipped) return r;
+    if (!spec.fixedScript) spec.seed = seedOf(spec.seed, 131);
+  }
+}
+function stepBlock(dt){
+  const B = eng.block; if (!B) return;
+  if (eng.restartBlock){ eng.restartBlock = false; B.skippedRun = true; beginEnd(B); }
+  B.elapsed += dt;
+  if (!B.ending && isTrackTask(B.task)){
+    B.fireAll += dt;
+    if (eng.lmb) B.fireOn += dt;
+  }
+  if (!B.ending){
+    if (B.task === 'flick' || B.task === 'micro'){
+      const busy = B.targets.some(t=>t.state==='active'||t.state==='spawn');
+      if (!busy && B.spawned < B.p.trials) spawnFromScript();
+      const a = B.targets.find(t=>t.state==='active');
+      if (a && gTime - a.activeAt > B.p.timeout) recordMiss(a);
+      if (B.trialsDone >= B.p.trials) beginEnd(B);
+    } else if (B.task === 'switch'){
+      if (!B.targets.some(t=>t.state!=='dying')) spawnSwitchPair(true);
+      const c0 = B.targets.find(t=>t.isCurrent && t.state==='active');
+      if (c0 && gTime - c0.activeAt > B.p.timeout){
+        recordMiss(c0); c0.isCurrent = false;
+        for (const t of B.targets){ if (t.state !== 'dying'){ t.state='dying'; t.dieAt=gTime; } }
+        spawnSwitchPair(true);
+      }
+      if (B.trialsDone >= B.p.trials) beginEnd(B);
+    } else {
+      if (B.elapsed >= B.p.duration) beginEnd(B);
+    }
+  }
+  updateTargets(dt);
+  try{ trackFire(); }catch(e){}
+  if (B.ending && gTime >= B.endAt) finalizeBlock();
+}
+function beginEnd(B){
+  if (!B) return;
+  B.ending = true; B.endAt = gTime + 0.5;
+  for (const t of B.targets){ if (t.state !== 'dying'){ t.state='dying'; t.dieAt=gTime; } }
+}
+function finalizeBlock(){
+  const B = eng.block; if (!B) return;
+  let score=0, stats;
+  if (B.skippedRun){
+    stats = { skipped:true, task:B.task };
+  } else if (isTrackTask(B.task)){
+    const s = B.samples;
+    const meanClose = avg(s.map(x=>x.close)), meanMatch = avg(s.map(x=>x.match));
+    const meanErr = avg(s.map(x=>x.err));
+    score = 100*(0.5*Math.pow(meanClose,1.2) + 0.5*Math.pow(meanMatch,1.15));
+    stats = { task:B.task, samples:s.length, meanErr, meanClose, meanMatch,
+              fireOn:B.fireOn, fireAll:B.fireAll,
+              fireCov: B.fireAll>0 ? B.fireOn/B.fireAll : 0,
+              shotN: B.shotN||0, shotOn: B.shotOn||0,
+              hits: B.shotOn||0, trials: B.shotN||0,
+              hitRate: (B.shotN||0) > 0 ? (B.shotOn||0)/B.shotN : null };
+  } else {
+    const hits = B.trials.filter(x=>x.hit);
+    score = B.trials.length ? avg(B.trials.map(x=>x.s)) : 0;
+    stats = { task:B.task, trials:B.trials.length, hits:hits.length,
+      hitRate: B.trials.length ? hits.length/B.trials.length : 0,
+      meanTT: hits.length ? avg(hits.map(x=>x.tt)) : null,
+      meanOver: avg(hits.map(x=>x.overRatio)), meanEff: avg(hits.map(x=>x.pathEff)),
+      meanCent: hits.length ? avg(hits.map(x=>x.cent)) : null,
+      clickAcc: B.shots ? (B.shots-B.missShots)/B.shots : 0,
+      hitN: hits.length,
+      sumTT: hits.reduce((s,x)=>s+fin(x.tt,0),0),
+      sumOver: hits.reduce((s,x)=>s+fin(x.overRatio,0),0),
+      sumCent: hits.reduce((s,x)=>s+fin(x.cent,0),0),
+      sumRev: hits.reduce((s,x)=>s+fin(x.reversals,0),0),
+      missAngSum:B.missAngSum, missAngN:B.missAngN,
+      missNormSum:B.missNormSum, missNormN:B.missNormN };
+  }
+  const res = { score, stats, sensEff:B.sensEff, task:B.task, L:B.L,
+                elapsed: fin(B.elapsed,0), skipped:!!B.skippedRun };
+  const done = B.resolve;
+  eng.block = null; eng.mode = 'wait';
+  done && done(res);
+}
+
+/* ============================ 13. 瞄准数据 / 模型 ============================ */
+function absorbData(c, stats){
+  if (!c || !stats || stats.skipped || stats.aborted) return false;
+  const d = c.data || (c.data = {blocks:0,hits:0,clicks:0,ttSum:0,overSum:0,overN:0,
+    centSum:0,centN:0,revSum:0,missSum:0,missN:0,fireOn:0,fireAll:0,samples:0});
+  d.blocks++;
+  if (isTrackTask(stats.task)){
+    d.hits += fin(stats.shotOn,0); d.clicks += fin(stats.shotN,0);
+    d.fireOn += fin(stats.fireOn,0); d.fireAll += fin(stats.fireAll,0);
+    d.samples += fin(stats.samples,0);
+  } else {
+    d.hits += fin(stats.hits,0); d.clicks += fin(stats.trials,0);
+    d.ttSum += fin(stats.sumTT,0);
+    d.overSum += fin(stats.sumOver,0); d.overN += fin(stats.hitN,0);
+    d.centSum += fin(stats.sumCent,0); d.centN += fin(stats.hitN,0);
+    d.revSum  += fin(stats.sumRev,0);
+    d.missSum += fin(stats.missAngSum,0); d.missN += fin(stats.missAngN,0);
+  }
+  return true;
+}
+function aimStatsOf(c){
+  const d = c && c.data; if (!d || !d.blocks) return null;
+  return {
+    hitRate: d.clicks ? d.hits/d.clicks : null,
+    meanTT : d.hits ? d.ttSum/Math.max(1,d.hits) : null,
+    cent   : d.centN ? d.centSum/d.centN : null,
+    over   : d.overN ? d.overSum/d.overN : null,
+    rev    : d.overN ? d.revSum/d.overN : null,
+    miss   : d.missN ? d.missSum/d.missN : null,
+    fireCov: d.fireAll > 0 ? d.fireOn/d.fireAll : null
+  };
+}
+function modelProposal(tr){
+  const scPts = [], osPts = [];
+  for (const c of tr.pool){
+    if (!c.data || !c.data.blocks) continue;
+    const x = Math.log10(c.v);
+    const s = meanScore(tr, c);
+    if (Number.isFinite(s) && s > 0) scPts.push([x, s]);
+    const st = aimStatsOf(c);
+    if (st && st.over !== null && c.data.hits >= 6) osPts.push([x, st.over]);
+  }
+  const out = { n:tr.pool.filter(c=>c.data&&c.data.blocks).length, bases:[], x:null, scFit:null, osFit:null };
+  if (scPts.length >= 3){
+    const f = quadFit(scPts);
+    if (f && f.a < -1e-6){
+      const v = -f.b/(2*f.a);
+      if (v > f.x0-0.05 && v < f.x1+0.05){ out.scFit = f; out.bases.push({ k:'分数顶点', x:v, r2:f.r2, w:0.6 }); }
+    }
+  }
+  if (osPts.length >= 3){
+    const f = quadFit(osPts);
+    if (f && f.a > 1e-6){
+      const v = -f.b/(2*f.a);
+      if (v > f.x0-0.05 && v < f.x1+0.05){ out.osFit = f; out.bases.push({ k:'过冲最低点', x:v, r2:f.r2, w:0.4 }); }
+    }
+  }
+  if (out.bases.length){
+    const wsum = out.bases.reduce((s,b)=>s+b.w,0);
+    out.x = out.bases.reduce((s,b)=>s+b.w*b.x,0)/wsum;
+  }
+  return out;
+}
+const fmtBases = bases => (bases && bases.length)
+  ? bases.map(b=>`${b.k} ${Math.pow(10,b.x).toFixed(2)}（R²=${b.r2.toFixed(2)}）`).join('；') : '';
+/* 持续推算核心：只要累积了足够新数据、且拟合出一个尚未测过的新候选，就返回它 */
+function modelFresh(tr){
+  if (!cfg.modelOn || !tr) return null;
+  if (fin(tr.modelNew,0) < MODEL.minNew) return null;
+  const prop = modelProposal(tr);
+  if (!prop || prop.x === null) return null;
+  const lead = tr.leader || { v: tr.initV };
+  const xl = vToX(lead.v);
+  const v = round2(clamp(Math.pow(10, clamp(prop.x, xl-0.12, xl+0.12)), bounds.lo, bounds.hi));
+  const ex = tr.pool.find(c=>Math.abs(c.v - v) < 1e-9);
+  if (ex && ex.blocks && ex.blocks.length) return null;
+  if (tr.modelLastV !== null && tr.modelLastV !== undefined &&
+      Math.abs(Math.log10(v / tr.modelLastV)) < 0.004) return null;
+  return { v, prop };
+}
+/* HUD 上的实时推算值（每结算一段自动刷新） */
+function refreshModelPeek(tr){
+  if (!cfg.modelOn || !tr) return;
+  try{
+    const prop = modelProposal(tr);
+    if (!prop || prop.x === null){ tr.modelPeek = null; return; }
+    const lead = tr.leader || { v: tr.initV };
+    const xl = vToX(lead.v);
+    tr.modelPeek = round2(clamp(Math.pow(10, clamp(prop.x, xl-0.12, xl+0.12)), bounds.lo, bounds.hi));
+  }catch(e){ tr.modelPeek = null; }
+}
+const aimLine = st => !st ? '—' :
+  [ st.hitRate!==null?('命中率 '+(st.hitRate*100).toFixed(0)+'%'):null,
+    st.cent!==null?('居中度 '+((1-st.cent)*100).toFixed(0)+'%'):null,
+    st.meanTT!==null?('点击 '+(st.meanTT*1000).toFixed(0)+'ms'):null,
+    st.over!==null?('过冲 '+(st.over*100).toFixed(0)+'%'):null,
+    st.miss!==null?('失误距离 '+st.miss.toFixed(2)+'°'):null,
+    st.fireCov!==null?('开火占比 '+(st.fireCov*100).toFixed(0)+'%'):null
+  ].filter(Boolean).join(' · ');
+
+/* ============================ 14. 漂移校准（锚点） ============================ */
+function anchorSpec(){
+  if (cfg.anchorMode === 'off') return null;
+  return { task:'flick', L:ANCHOR_L, seed:ANCHOR_SEED, sens:baseSens, over:{ trials:5 }, fixedScript:true };
+}
+async function recordAnchor(tr, label){
+  const spec = anchorSpec();
+  if (!spec) return null;
+  await transitionOverlay('状态校准（固定脚本 · 约 10 秒）', 2);
+  const r = await execBlock(spec);
+  if (!r || r.aborted) return null;
+  sessionClock += fin(r.elapsed,0);
+  if (r.skipped || !r.stats || r.stats.skipped) return null;
+  const a = { t: sessionClock, s: r.score, seg: tr.seg, label: label || '' };
+  tr.anchors.push(a);
+  const A = tr.anchors;
+  if (A.length >= 2){
+    const best = Math.max.apply(null, A.map(x=>x.s));
+    const drop = best - a.s;
+    const delta = a.s - A[0].s;
+    if (drop >= 10 || delta <= -8){
+      if (!tr.fatigued) tr.fatigueEpisodes = (tr.fatigueEpisodes||0) + 1;
+      tr.fatigued = true;
+    } else if (tr.fatigued && drop <= 5){
+      tr.fatigued = false; tr.fatigueRested = false; tr.recovered = true;
+    }
+  }
+  return a;
+}
+async function anchorIfDue(tr, label, minGap){
+  if (cfg.anchorMode === 'off') return null;
+  const A = tr.anchors;
+  const gap = (minGap === undefined) ? (cfg.anchorMode==='strict' ? 60 : 90) : minGap;
+  const lastT = A.length ? A[A.length-1].t : -1e9;
+  if (A.length && (sessionClock - lastT) < gap) return null;
+  return await recordAnchor(tr, label);
+}
+function corrOf(tr, t, seg){
+  if (cfg.anchorMode === 'off') return 0;
+  const A = tr && tr.anchors; if (!A || A.length < 2) return 0;
+  const s0 = A[0].s;
+  let prev = null, next = null;
+  for (let i=0;i<A.length;i++){
+    const a = A[i];
+    if (a.seg === seg){
+      if (a.t <= t && (!prev || a.t > prev.t)) prev = a;
+      if (a.t >  t && (!next || a.t < next.t)) next = a;
+    }
+  }
+  if (!prev){ for (let i=0;i<A.length;i++){ const a=A[i]; if (a.t <= t && (!prev || a.t > prev.t)) prev = a; } }
+  if (!prev) return 0;
+  if (next){
+    const f = (t - prev.t) / Math.max(1e-6, next.t - prev.t);
+    return clamp(lerp(prev.s, next.s, f) - s0, -15, 15);
+  }
+  const segA = A.filter(a=>a.seg===seg);
+  let slope = 0;
+  if (segA.length >= 2){
+    const a1 = segA[0], a2 = segA[segA.length-1];
+    slope = (a2.s - a1.s)/Math.max(1e-6, a2.t - a1.t);
+  }
+  slope = clamp(slope, -0.06, 0.06);
+  return clamp(prev.s - s0 + slope*(t - prev.t), -15, 15);
+}
+function scoreOf(tr, blk){
+  if (!blk) return 0;
+  return clamp(fin(blk.score,0) - corrOf(tr, fin(blk.t,0), fin(blk.seg,0)), 0, 100);
+}
+function anchorSlopePerMin(tr){
+  const A = tr && tr.anchors; if (!A || A.length < 2) return null;
+  const n=A.length, ts=A.map(a=>a.t/60), ss=A.map(a=>a.s);
+  const mt=avg(ts), ms=avg(ss);
+  let num=0, den=0;
+  for (let i=0;i<n;i++){ num += (ts[i]-mt)*(ss[i]-ms); den += (ts[i]-mt)*(ts[i]-mt); }
+  return den<=1e-9 ? null : num/den;
+}
+
+/* ============================ 15. 休息 / 疲劳 ============================ */
+function restPrompt(reason){
+  return new Promise(res=>{
+    let left = 45;
+    eng.mode = 'wait';
+    overlayEl.innerHTML = `<h2>休息一下（${reason}）</h2>
+      <div class="sub" style="text-align:center">
+      · 建议至少 <b>45 秒</b>：松开鼠标、活动手腕、看向远处，不要继续瞄准；<br>
+      · 疲劳会系统性压低分数，让它混进对比里，比“少测几分钟”的代价大得多；<br>
+      · 休息结束后会自动重新校准一次（漂移锚点），再继续测试。</div>
+      <div class="kv" id="restCount">${left} s</div>
+      <div class="row" style="justify-content:center"><button class="btn" id="restOk">我已休息好，继续</button></div>
+      <div class="hintline">按 [空格] 立即继续</div>`;
+    overlayEl.classList.remove('hidden');
+    const iv = setInterval(()=>{
+      left = Math.max(0, left-1);
+      const el = $('restCount'); if (el) el.textContent = left + ' s';
+    }, 1000);
+    let done = false;
+    const finish = ()=>{ if(done) return; done = true;
+      clearInterval(iv); document.removeEventListener('keydown', onSp);
+      overlayEl.classList.add('hidden'); res(); };
+    const onSp = e=>{ if (e.code === 'Space'){ e.preventDefault(); finish(); } };
+    document.addEventListener('keydown', onSp);
+    const b = $('restOk'); if (b) b.onclick = finish;
+  });
+}
+async function maybeRest(tr, force){
+  const due = restEverySec > 0 && sessionClock >= nextRestClock;
+  const recent = (sessionClock - lastRestClock) < 150;
+  if (!force && !due) return false;
+  if (force && recent && !due) return false;
+  await restPrompt(due ? '定时休息' : '高难度环节前');
+  lastRestClock = sessionClock;
+  nextRestClock = restEverySec > 0 ? sessionClock + restEverySec : 1e9;
+  tr.seg++;
+  await recordAnchor(tr, '休息后重新校准');
+  return true;
+}
+async function fatigueCheck(tr){
+  if (!tr || !tr.fatigued || tr.fatigueRested) return;
+  tr.fatigueRested = true;
+  await restPrompt('检测到状态下滑（疲劳信号）');
+  lastRestClock = sessionClock;
+  if (restEverySec > 0) nextRestClock = sessionClock + restEverySec;
+  tr.seg++;
+  await recordAnchor(tr, '疲劳休息后');
+}
+async function prewarmTask(tr, task, L){
+  if (!cfg.preWarmTasks) return;
+  if (tr.taskSeen[task]) return;
+  tr.taskSeen[task] = true;
+  const mini = (FAMILY[task]==='track')
+    ? { duration: Math.max(6, Math.round(lerp(16,24,clamp((L-1)/11,0,1))*0.45)) }
+    : { trials: 5 };
+  await transitionOverlay(`试打一小段：${TASK_NAME[task]}（不计分）`, 2);
+  const cand = tr.leader || { v: tr.initV };
+  const r = await execBlock(blockSpec(tr, task, L, 777000 + Object.keys(tr.taskSeen).length, cand, mini));
+  if (r) sessionClock += fin(r.elapsed,0);
+  chk();
+}
+
+/* ============================ 16. 覆盖层 / 暂停 / 姿势 ============================ */
+function showKeyOverlay(html){
+  eng.mode = 'wait';
+  overlayEl.innerHTML = html + `<div class="hintline">按 [空格] 继续</div>`;
+  overlayEl.classList.remove('hidden');
+  return new Promise(res=>{
+    overlayResolve = ()=>{ overlayEl.classList.add('hidden'); overlayResolve=null; res(); };
+  });
+}
+async function transitionOverlay(title, count){
+  const n = fin(count,3);
+  eng.mode='transition'; eng.block=null; cam.yaw=0; cam.pitch=0; eng.lmb=false;
+  overlayEl.innerHTML = `<h2>${title}</h2><div class="sub" style="text-align:center" id="ovCount">${n}</div>`;
+  overlayEl.classList.remove('hidden');
+  for (let k=n;k>=1;k--){
+    for (let w=0; w<60 && eng.mode==='paused' && !eng.abort; w++) await sleep(120);
+    if (eng.abort) throw ABORT;
+    const el = overlayEl.querySelector('#ovCount'); if (el) el.textContent = k;
+    await sleep(600);
+    if (eng.abort) throw ABORT;
+  }
+  overlayEl.classList.add('hidden');
+}
+function showPause(){
+  eng.savedMode = eng.mode === 'block' ? 'block' : 'wait';
+  eng.savedOverlay = overlayEl.classList.contains('hidden') ? null : overlayEl.innerHTML;
+  eng.mode = 'paused';
+  overlayEl.innerHTML = `<h2>已暂停</h2>
+    <div class="sub" style="text-align:center">鼠标已解锁。点击画面（或按 [回车]）继续测试；<br>也可以直接结束本次测试，用已有数据出结果。</div>
+    <div class="row" style="justify-content:center">
+      <button class="btn" id="pResume">继续测试</button>
+      <button class="btn secondary" id="pEnd">结束并查看结果</button>
+    </div>`;
+  overlayEl.classList.remove('hidden');
+  $('pResume').onclick = ()=>resume();
+  $('pEnd').onclick = ()=>abortTest();
+  overlayEl.onclick = e=>{ if (e.target === overlayEl) resume(); };
+}
+async function resume(){
+  const ok = await lockStage();
+  if (!ok){ await waitForLock(); }
+  if (!document.fullscreenElement) await goFullscreen();
+  overlayEl.onclick = null;
+  if (eng.savedOverlay){ overlayEl.innerHTML = eng.savedOverlay; }
+  else overlayEl.classList.add('hidden');
+  eng.mode = eng.savedMode || 'wait';
+}
+function abortTest(){
+  eng.abort = true;
+  overlayEl.classList.add('hidden'); overlayEl.onclick = null;
+  if (overlayResolve) overlayResolve();
+  if (comfortResolver) comfortResolver('Digit3');
+  if (eng.block){ const done = eng.block.resolve; eng.block = null; done && done({ aborted:true, score:0, stats:{aborted:true} }); }
+}
+function postureGate(){
+  return new Promise(res=>{
+    const items = [
+      '坐姿 / 站姿与平时打游戏时一致，手臂活动空间充足，桌沿不挡手',
+      '椅子高度、桌面高度、鼠标垫位置都处于你的常规状态（现在不要临时调整）',
+      '握姿（抓握 / 掌握 / 指握）与日常一致，手腕悬空或支撑状态相同',
+      '显示器距离与高度与平时一致，屏幕中心大致与视线齐平',
+      '身体状态可接受：不处于刚醒、极度疲劳、手很冷或刚剧烈运动之后',
+      '周围没有会打断你的事情，接下来请专注完成测试'
+    ];
+    overlayEl.style.overflowY = 'auto';
+    overlayEl.innerHTML = `<h2>开始前：请用你最舒服的瞄准姿势</h2>
+      <div class="sub">这份清单直接影响结果是否有效——如果姿势与平时不同，测出来的“最合适灵敏度”就不属于平时的你。
+      <ul style="margin:10px 0 14px 18px;padding:0">${items.map(t=>'<li style="margin:4px 0">'+t+'</li>').join('')}</ul></div>
+      <div class="sub" style="border-left:3px solid #ffb454;padding:2px 0 2px 12px;margin:0 0 4px">
+        <b>本次测试的目的，请先明确：</b><br>
+        这次测试要找出的是<b>最科学、最适合你的灵敏度</b>，而不是“打到最高分”。<br>
+        所以请<b>不要为了更高的分数而改变自己最习惯、最舒适的姿势</b>——临时挺直坐、换握法、把手腕架到桌面上，
+        也许能让你多拿几分，但那只会得到一个只适合“不自然的你”的灵敏度，你平时用起来反而更别扭。<br>
+        分数只是用来比较两个灵敏度相对好坏的尺子；<b>姿势保持平时的样子，结论才属于平时的你。</b>
+      </div>
+      <div class="sub" style="border-left:3px solid #79d0ff;padding:2px 0 2px 12px;margin:0 0 4px">
+        <b>跟枪任务注意：</b>按住左键<b>持续开火</b>——未命中是较闷的枪声，命中时枪声会变亮；松开左键的时间不计分、也没有枪声。<br>
+        <b>目标切换：</b>两个靶里只打<b>高亮</b>的那个，命中后另一个变为高亮；目标都在前方，不需要大幅转身。<br>
+        <b>拉枪范围：</b>只有<b>快速定位</b>会出现侧后方目标（最大 ±135°），屏幕边缘的箭头指示方向。<br>
+        <b>模型推算：</b>测试中途会出现「模型推算」回合——那是系统根据已积累数据算出的新候选，按正常方式打即可。<br>
+        <b>脚本每段不同：</b>不会出现“同一条轨迹打第二遍”的情况，请按新鲜目标认真打即可。<br>
+        <b>右键已屏蔽：</b>测试期间鼠标右键 / 中键 / 侧键不会触发浏览器菜单或前进后退；若不慎退出指针锁定，测试会自动暂停。
+      </div>
+      <div class="row" style="justify-content:center"><button class="btn" id="pgOk">我理解，用平时的姿势开始</button></div>
+      <div class="hintline">按 [空格] 等同于点击按钮</div>`;
+    overlayEl.classList.remove('hidden');
+    let done = false;
+    const finish = ()=>{ if(done) return; done=true;
+      document.removeEventListener('keydown', onSp);
+      overlayEl.style.overflowY = '';
+      overlayEl.classList.add('hidden'); res(); };
+    const btn = $('pgOk'); if (btn) btn.onclick = finish;
+    const onSp = e=>{ if (e.code === 'Space'){ e.preventDefault(); finish(); } };
+    document.addEventListener('keydown', onSp);
+  });
+}
+
+/* ============================ 17. 自适应难度 ============================ */
+function updateBias(tr, scores){
+  if (!cfg.adaptiveDiff) return;
+  const a = scores.filter(v=>Number.isFinite(v));
+  if (!a.length) return;
+  const m = avg(a);
+  if (m >= 86) tr.lvBias = clamp(tr.lvBias+2, -2, 5);
+  else if (m >= 78) tr.lvBias = clamp(tr.lvBias+1, -2, 5);
+  else if (m <= 34) tr.lvBias = clamp(tr.lvBias-2, -2, 5);
+  else if (m <= 44) tr.lvBias = clamp(tr.lvBias-1, -2, 5);
+}
+const effL = (tr, L)=> clamp(Math.round(fin(L,5) + (tr.lvBias||0)), 1, LV_MAX);
+const biasNote = tr => (tr && tr.lvBias ? `（自适应 ${tr.lvBias>0?'+':''}${tr.lvBias}）` : '');
+
+/* ============================ 18. 候选点 / 搜索 / 对决 / 深化 ============================ */
+function newTrack(initV, step){
+  return { initV, pool:[], leader:null, search:{step, dir:1},
+           roundLog:[], duelLog:[], comfort:null, rec:null, interval:null, verdict:null, st:null,
+           pair:null, finalPair:null, skipped:false, deepenCount:0, tinyGap:false,
+           anchors:[], seg:0, fatigued:false, fatigueRested:false, fatigueEpisodes:0, recovered:false,
+           deepStopped:false, taskSeen:{}, bal:0, lvBias:0,
+           modelNew:0, modelAdopt:0, modelPairs:0, modelLog:[], modelLastV:null, modelPeek:null };
+}
+function xToV(x){ return round2(Math.pow(10,x)); }
+function vToX(v){ return Math.log10(v); }
+function clampX(x){
+  if (!Number.isFinite(x)) return vToX(baseSens);
+  return Math.log10(clamp(Math.pow(10,x), bounds.lo, bounds.hi));
+}
+function addCand(tr, x){
+  x = clampX(x);
+  const v = xToV(x), X = vToX(v);
+  let c = tr.pool.find(c=>Math.abs(c.v - v) < 1e-9);
+  if (c) return c;
+  c = { v, X, elo:1000, blocks:[], wins:0, losses:0, data:null };
+  tr.pool.push(c); tr.pool.sort((a,b)=>a.X-b.X);
+  return c;
+}
+function meanScore(tr, c){
+  if (!c || !c.blocks.length) return 0;
+  return avg(c.blocks.map(b=>scoreOf(tr,b)));
+}
+function famMean(tr, c, fam){
+  const a = c.blocks.filter(b=>FAMILY[b.task]===fam);
+  return a.length ? avg(a.map(b=>scoreOf(tr,b))) : null;
+}
+function proposeChallenger(tr, lead, dir, step){
+  const initX = vToX(tr.initV);
+  const driftLimit = 0.34;
+  for (const sgn of [dir,-dir]){
+    for (const m of [1, 0.75, 0.5]){
+      const X = clampX(lead.X + sgn*step*m);
+      if (Math.abs(X-initX) > driftLimit) continue;
+      const v = xToV(X);
+      if (v < bounds.lo || v > bounds.hi) continue;
+      if (tr.pool.some(c=>Math.abs(c.v-v) < 1e-9)) continue;
+      return addCand(tr, X);
+    }
+  }
+  for (const sgn of [dir,-dir]){
+    for (let k=1;k<=10;k++){
+      const v = round2(lead.v + sgn*k*0.01*Math.max(1, lead.v));
+      if (v < bounds.lo || v > bounds.hi) continue;
+      if (tr.pool.some(c=>Math.abs(c.v-v) < 1e-9)) continue;
+      return addCand(tr, vToX(v));
+    }
+  }
+  return null;
+}
+function pickSecond(tr, A){
+  const others = tr.pool.filter(c=>c!==A).sort((a,b)=> (b.elo-a.elo) || (meanScore(tr,b)-meanScore(tr,a)));
+  const near = others.find(c=>Math.abs(c.X - A.X) >= 0.012);
+  if (near) return near;
+  const delta = 0.012;
+  let v = round2(clamp(A.v + delta, bounds.lo, bounds.hi));
+  if (Math.abs(v-A.v) < 1e-9) v = round2(clamp(A.v - delta, bounds.lo, bounds.hi));
+  return (Math.abs(v-A.v)<1e-9) ? A : addCand(tr, vToX(v));
+}
+const labelOf = c => c.v.toFixed(2);
+
+function blockSpec(tr, task, L, seed, cand, over){
+  const spec = { task, L, seed, sens:cand.v };
+  if (over) spec.over = over;
+  return spec;
+}
+function scoreLine(tr, lbl, blk, corr){
+  const s = scoreOf(tr, blk);
+  const cTxt = Math.abs(corr) >= 0.8 ? `（含漂移补偿 ${corr>0?'−':'+'}${Math.abs(corr).toFixed(1)} 分）` : '';
+  return `${lbl} → ${s.toFixed(1)} ${cTxt}`;
+}
+const SEARCH_MARGIN = 4;
+function chk(){ if (eng.abort) throw ABORT; }
+
+async function runPair(spec){
+  const tr = spec.track;
+  const {A,B,task,seed,title} = spec;
+  const L = effL(tr, spec.L);
+  let AFirst;
+  if (tr.bal > 0) AFirst = false;
+  else if (tr.bal < 0) AFirst = true;
+  else AFirst = Math.random() < 0.5;
+  const order = AFirst ? [A,B] : [B,A];
+  tr.bal += AFirst ? 1 : -1;
+  const stepTxt = (spec.stepAbs !== undefined)
+    ? `<br>本轮搜索步长：<b>±${spec.stepAbs.toFixed(2)}</b>（相对 ${(spec.stepRel*100).toFixed(1)}%） → 逐轮收敛中`
+    : '';
+  const modelTxt = spec.isModel ? '<br>· 本轮对手来自<b>模型实时推算</b>（随数据累积会持续更新）' : '';
+  await showKeyOverlay(`<h2>${title}</h2>
+    <div class="sub" style="text-align:center">${levelLine(L, task)}${biasNote(tr)}${stepTxt}<br>
+    · 两套不同的等价脚本（难度构成一致 · 轨迹不同），顺序随机：① <b>${labelOf(order[0])}</b>　② <b>${labelOf(order[1])}</b>　· 顺序平衡指数 ${tr.bal>0?'+':''}${tr.bal}${modelTxt}<br>
+    · ${taskHint(task)}　·　失误可按 [R] 重开本段</div>`);
+  chk();
+  const res = [];
+  for (let k=0;k<2;k++){
+    const c = order[k];
+    await transitionOverlay(`准备：${labelOf(c)}（${k+1} / 2）· Lv.${L}`);
+    chk();
+    const r = await execBlock(blockSpec(tr, task, L, seedOf(seed,k), c));
+    if (r.aborted) throw ABORT;
+    sessionClock += fin(r.elapsed,0);
+    if (absorbData(c, r.stats)) tr.modelNew++;
+    const blk = { score:r.score, task, family:FAMILY[task], stage:'search', main:false,
+                  stats:r.stats, label:title, t:sessionClock, seg:tr.seg, L };
+    c.blocks.push(blk);
+    res.push({ c, r, blk, raw:r.score, st:r.stats });
+  }
+  const Ar = res.find(x=>x.c===A) || res[0], Br = res.find(x=>x.c===B) || res[1];
+  const corrA = Ar.blk.score - scoreOf(tr, Ar.blk), corrB = Br.blk.score - scoreOf(tr, Br.blk);
+  const sA = scoreOf(tr, Ar.blk), sB = scoreOf(tr, Br.blk);
+  updateBias(tr, [sA, sB]);
+  const winner = sA > sB+SEARCH_MARGIN ? 'A' : (sB > sA+SEARCH_MARGIN ? 'B' : 'tie');
+  const E = 1/(1+Math.pow(10,(B.elo-A.elo)/400));
+  const d = 24*((winner==='A'?1:winner==='B'?0:0.5)-E);
+  A.elo += d; B.elo -= d;
+  if (winner==='A'){ A.wins++; B.losses++; } else if (winner==='B'){ B.wins++; A.losses++; }
+  tr.roundLog.push({ title, task, L, a:A, b:B, sa:sA, sb:sB, blkA:Ar.blk, blkB:Br.blk,
+                     winner, isModel:!!spec.isModel, isExtra:!!spec.isExtra, stA:Ar.st, stB:Br.st });
+  const lead = tr.leader || A;
+  refreshModelPeek(tr);
+  await showKeyOverlay(`<h2>${title} · 结果</h2>
+    <div class="big">${scoreLine(tr, labelOf(A), Ar.blk, corrA)}　|　${scoreLine(tr, labelOf(B), Br.blk, corrB)}</div>
+    <div class="sub" style="text-align:center">${winner==='tie' ? `两者接近（≤ ${SEARCH_MARGIN} 分）${spec.cap<=0.08?' → 已安排追加一轮':''}` :
+      (winner==='A' ? `<b>${labelOf(A)}</b> 胜（保持基准）` : `<b>${labelOf(B)}</b> 胜（成为新基准）`)}
+      <br>${labelOf(A)}：${aimLine(aimStatsOf(A))}<br>${labelOf(B)}：${aimLine(aimStatsOf(B))}
+      <br>当前基准：<b>${labelOf(lead)}</b>　·　自适应难度 ${tr.lvBias>0?'+':''}${tr.lvBias}${tr.modelPeek?`　·　模型实时推算 ≈ <b>${tr.modelPeek.toFixed(2)}</b>`:''}</div>`);
+  chk();
+  return { A, B, winner, tied:winner==='tie' };
+}
+async function runSearchRound(tr, spec){
+  if (!tr.leader) tr.leader = addCand(tr, vToX(tr.initV));
+  tr.search.step = Math.min(tr.search.step, spec.cap);
+  /* —— 持续推算：有尚未测过的新候选时，直接把它作为本轮挑战者 —— */
+  let ch = null, fromModel = false, mEntry = null;
+  if (cfg.modelOn && fin(tr.modelAdopt,0) < MODEL.maxAdopt){
+    const mf = modelFresh(tr);
+    if (mf){
+      const cand = addCand(tr, vToX(mf.v));
+      const dX = Math.abs(vToX(cand.v) - vToX(tr.leader.v));
+      if (cand !== tr.leader && dX >= Math.max(0.008, 0.25*spec.cap) && dX <= 0.34){
+        ch = cand; fromModel = true;
+        tr.modelAdopt = fin(tr.modelAdopt,0) + 1;
+        mEntry = { t:Math.round(sessionClock), v:cand.v, stage:'搜索', mode:'adopt',
+                   outcome:null, bases:fmtBases(mf.prop.bases) };
+        tr.modelLog.push(mEntry);
+        tr.modelNew = 0; tr.modelLastV = cand.v;
+      }
+    }
+  }
+  if (!ch){
+    ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step);
+    if (!ch){ tr.search.dir = -tr.search.dir; tr.search.step *= 0.7;
+              ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step); }
+    if (!ch){
+      const v = round2(clamp(tr.leader.v*1.01, bounds.lo, bounds.hi));
+      ch = addCand(tr, vToX(v));
+      if (ch === tr.leader) return { winner:'tie', tied:true };
+    }
+  }
+  const stepAbs = Math.abs(ch.v - tr.leader.v);
+  const stepRel = stepAbs / Math.max(1e-6, tr.leader.v);
+  const out = await runPair({ track:tr, A:tr.leader, B:ch, task:spec.task, L:spec.L, seed:spec.seed,
+    stepAbs, stepRel, cap:spec.cap, isExtra:!!spec.extra, isModel:fromModel,
+    title:`${spec.extra?'追加搜索':'搜索'} ${spec.i+1}/${spec.total}${fromModel?' · 模型推算':''}（${TASK_NAME[spec.task]} · Lv.${effL(tr,spec.L)}）` });
+  if (mEntry) mEntry.outcome = out.winner==='B' ? 'win' : (out.winner==='A' ? 'lose' : 'tie');
+  if (out.winner==='B'){ tr.leader = out.B; }
+  else { tr.search.dir = -tr.search.dir; tr.search.step *= (out.winner==='A' ? 0.6 : 0.75); }
+  return out;
+}
+/* —— 模型实测对局：基准 vs 模型新候选（持续推算的“检验”环节） —— */
+async function runModelPair(tr, stageLabel, L, seedBase){
+  if (!cfg.modelOn || !tr) return null;
+  if (fin(tr.modelPairs,0) >= MODEL.maxPairs) return null;
+  const mf = modelFresh(tr);
+  if (!mf) return null;
+  const lead = tr.leader || addCand(tr, vToX(tr.initV));
+  const cand = addCand(tr, vToX(mf.v));
+  if (cand === lead || (cand.blocks && cand.blocks.length)) return null;
+  tr.modelPairs = fin(tr.modelPairs,0) + 1;
+  const entry = { t:Math.round(sessionClock), v:cand.v, stage:stageLabel, mode:'pair',
+                  outcome:null, bases:fmtBases(mf.prop.bases) };
+  tr.modelLog.push(entry);
+  tr.modelNew = 0; tr.modelLastV = cand.v;
+  const basesHtml = (mf.prop.bases||[]).map(b=>`${b.k} = ${Math.pow(10,b.x).toFixed(2)}（R²=${b.r2.toFixed(2)}）`).join('<br>') || '（数据点不足，按现有拟合近似）';
+  await showKeyOverlay(`<h2>${stageLabel} · 模型推算（第 ${tr.modelPairs} 次实测）</h2>
+    <div class="sub" style="text-align:center">
+    依据目前累计的全部数据重新拟合，模型给出一个尚未测过的候选：<br>
+    <div class="kv">${basesHtml}</div>
+    <b>提议值：${cand.v.toFixed(2)}</b>（当前基准 ${lead.v.toFixed(2)}）<br>
+    <span style="color:#ffb454">模型只负责提出“值得测的点”，胜负由本次实测对决决定；之后每积累一批新数据它都会继续更新。</span><br>
+    <span style="color:#7f93b0">本对局只与当前基准较量，不会改动已锁定的最终对决；若要让候选正式挑战推荐值，请在结果页使用「模型继续推算」。</span></div>`);
+  chk();
+  const out = await runPair({ track:tr, A:lead, B:cand, task:'flick', L, seed:seedOf(seedBase, tr.modelPairs*9973+7), isModel:true,
+    title:`${stageLabel} · 模型推算对决（第 ${tr.modelPairs} 次 · Lv.${effL(tr,L)}）` });
+  entry.outcome = out.winner==='B' ? 'win' : (out.winner==='A' ? 'lose' : 'tie');
+  if (out.winner==='B') tr.leader = cand;
+  chk();
+  return out;
+}
+async function runDuel(spec){
+  const tr = spec.track;
+  const {A,B,task,seed,main,deepen,duelId,title,challenge} = spec;
+  const L = effL(tr, spec.L);
+  const order = ((duelId % 2 === 0) ? [A,B,B,A] : [B,A,A,B]);
+  await showKeyOverlay(`<h2>${title}</h2>
+    <div class="sub" style="text-align:center">${levelLine(L, task)}${biasNote(tr)}<br>
+    · 对决：<b>${labelOf(A)}</b> vs <b>${labelOf(B)}</b>（ABBA 交替各 2 段，共 4 段；四段脚本各不相同、难度构成一致）<br>
+    · ABBA 位置均值为 2.5，线性疲劳/学习漂移在配对差值中被数学抵消；残留漂移由锚点补偿<br>
+    · ${taskHint(task)}</div>`);
+  chk();
+  const list = [];
+  for (let k=0;k<order.length;k++){
+    const c = order[k];
+    await transitionOverlay(`准备：${labelOf(c)}（${k+1} / 4）· Lv.${L}`);
+    chk();
+    const r = await execBlock(blockSpec(tr, task, L, seedOf(seed,k), c));
+    if (r.aborted) throw ABORT;
+    sessionClock += fin(r.elapsed,0);
+    if (absorbData(c, r.stats)) tr.modelNew++;
+    const blk = { score:r.score, task, family:FAMILY[task],
+      stage: challenge ? 'challenge' : (main?'duel-main':(deepen?'duel-deepen':'duel-extra')),
+      main:!!main, deepen:!!deepen, duelId, stats:r.stats, label:title,
+      t:sessionClock, seg:tr.seg, L };
+    c.blocks.push(blk);
+    list.push({ c, r, blk, score:r.score });
+  }
+  const blksA = list.filter(x=>x.c===A).map(x=>x.blk);
+  const blksB = list.filter(x=>x.c===B).map(x=>x.blk);
+  const sA = blksA.map(b=>scoreOf(tr,b));
+  const sB = blksB.map(b=>scoreOf(tr,b));
+  const sARaw = blksA.map(b=>b.score), sBRaw = blksB.map(b=>b.score);
+  updateBias(tr, sA.concat(sB));
+  tr.duelLog.push({ A,B,task,L,main:!!main,deepen:!!deepen,duelId,challenge:!!challenge,
+    sA, sB, sARaw, sBRaw, ba:blksA, bb:blksB, meanA:avg(sA), meanB:avg(sB) });
+  refreshModelPeek(tr);
+  await showKeyOverlay(`<h2>${title} · 结果</h2>
+    <div class="big">${labelOf(A)} → ${avg(sA).toFixed(1)}　|　${labelOf(B)} → ${avg(sB).toFixed(1)}</div>
+    <div class="sub" style="text-align:center">
+    ${labelOf(A)} 各段（校正后）：${sA.map(v=>v.toFixed(1)).join(' / ')}　原始：${sARaw.map(v=>v.toFixed(1)).join(' / ')}<br>
+    ${labelOf(B)} 各段（校正后）：${sB.map(v=>v.toFixed(1)).join(' / ')}　原始：${sBRaw.map(v=>v.toFixed(1)).join(' / ')}</div>`);
+  chk();
+}
+function pairDiffStats(tr){
+  let pair = tr.finalPair; if (!pair) return null;
+  const D = [];
+  for (const d of tr.duelLog){
+    if (!(d.main || d.deepen)) continue;
+    if (d.A !== pair.A || d.B !== pair.B) continue;
+    const av = (d.ba||[]).map(b=>scoreOf(tr,b));
+    const bv = (d.bb||[]).map(b=>scoreOf(tr,b));
+    if (av.length >= 2 && bv.length >= 2){ D.push(av[0]-bv[0]); D.push(av[1]-bv[1]); }
+    else if (av.length && bv.length){ D.push(av[0]-bv[0]); }
+  }
+  if (!D.length) return null;
+  const mean = avg(D);
+  const se = D.length>1 ? Math.sqrt(varr(D)/D.length) : Infinity;
+  const thr = Math.max(2.0, 2.0*se);
+  return { mean, se, thr, n:D.length, D };
+}
+async function finalizeTrack(tr, opts){
+  let R = decide(tr);
+  if (!R || !R.pair) return R;
+  let iter = tr.deepenCount || 0;
+  while (R && R.verdict === 'tie' && iter < opts.budget){
+    if (tr.fatigued){ tr.deepStopped = true; break; }
+    const gapRel = Math.abs(R.pair.A.v - R.pair.B.v) / Math.max(1e-9, R.pair.B.v);
+    if (iter >= 1 && gapRel <= 0.012){ tr.tinyGap = true; break; }
+    iter++;
+    const task = opts.taskList[(iter-1) % opts.taskList.length];
+    const ms = Math.min(meanScore(tr, R.pair.A), meanScore(tr, R.pair.B));
+    let baseL = Math.min(LV_MAX, opts.levelStart + iter - 1);
+    if (ms < 42) baseL = Math.min(baseL, opts.levelStart);
+    const L = effL(tr, baseL);
+    const S = R.st;
+    const peekTxt = (cfg.modelOn && tr.modelPeek) ? `　·　模型实时推算 ≈ <b>${tr.modelPeek.toFixed(2)}</b>（仅供参照，不改动本对决）` : '';
+    stageInfo = { phase:`${opts.tag}·深化`, idx:iter, total:opts.budget };
+    await showKeyOverlay(`<h2>${opts.tag} · 深化轮 ${iter}/${opts.budget}</h2>
+      <div class="sub" style="text-align:center">
+      <b>差值没有超过噪声，所以不结束——继续加深。</b><br>
+      当前：${R.pair.A.v.toFixed(2)} vs ${R.pair.B.v.toFixed(2)} · 配对差值均值
+      <b>${S?S.mean.toFixed(1):'—'} 分</b> · 噪声阈值 <b>${S?(Number.isFinite(S.thr)?S.thr.toFixed(1):'∞'):'—'}</b> · 已有 ${S?S.n:0} 组配对样本<br>
+      ${levelLine(L, task)}${biasNote(tr)}<br>
+      本轮：换任务（${TASK_NAME[task]}）${ms<42?'（分数已接近地板，难度保持）':'并把难度提上去'} + ABBA 再跑 4 段。${peekTxt}<br>
+      <span style="color:#ffb454">若检测到疲劳信号，自动深化会立即停止。</span></div>`);
+    chk();
+    await maybeRest(tr, iter === 1);
+    await fatigueCheck(tr);
+    if (tr.fatigued){ tr.deepStopped = true; break; }
+    await runDuel({ track:tr, A:R.pair.A, B:R.pair.B, task, L:baseL, seed:61001*(iter+1)+901,
+      main:false, deepen:true, duelId:100+iter,
+      title:`${opts.tag} 深化 ${iter}/${opts.budget}（${TASK_NAME[task]} · Lv.${L}）` });
+    tr.deepenCount = iter;
+    await anchorIfDue(tr, '深化后');
+    R = decide(tr);
+  }
+  return R;
+}
+
+/* ============================ 19. 判定 / 主观手感 ============================ */
+function decide(tr){
+  const cands = tr.pool.filter(c=>c.blocks.length>0);
+  if (!cands.length) return null;
+  const sorted = [...cands].sort((a,b)=> (b.elo-a.elo) || (meanScore(tr,b)-meanScore(tr,a)));
+  const pair = tr.finalPair;
+  let rec=null, verdict='fallback', interval=null, st=null;
+  if (pair){
+    const S = pairDiffStats(tr);
+    if (S){
+      st = S;
+      verdict = S.mean > S.thr ? 'A' : (S.mean < -S.thr ? 'B' : 'tie');
+      let val;
+      if (verdict==='A') val = pair.A.v;
+      else if (verdict==='B') val = pair.B.v;
+      else if (tr.comfort && (tr.comfort === pair.A || tr.comfort === pair.B)){ val = tr.comfort.v; verdict='tie-comfort'; }
+      else val = (pair.A.v + pair.B.v)/2;
+      rec = round2(clamp(val, bounds.lo, bounds.hi));
+      interval = [Math.min(pair.A.v,pair.B.v), Math.max(pair.A.v,pair.B.v)];
+    }
+  }
+  if (rec === null){ rec = sorted[0].v; interval = [sorted[0].v, sorted[0].v]; pair = pair || { A:sorted[0], B:sorted[0] }; }
+  const out = { sorted, rec, verdict, interval, st, pair };
+  Object.assign(tr, out);
+  return out;
+}
+function comfortOverlay(tr, tag){
+  const mains = tr.duelLog.filter(d=>d.main || d.deepen);
+  return new Promise(res=>{
+    if (!mains.length){ res(); return; }
+    const pair = tr.finalPair || { A:mains[0].A, B:mains[0].B };
+    const A = pair.A, B = pair.B;
+    eng.mode = 'wait';
+    comfortResolver = code=>{
+      tr.comfort = code==='Digit1' ? A : (code==='Digit2' ? B : null);
+      comfortResolver = null; overlayEl.classList.add('hidden'); res();
+    };
+    overlayEl.innerHTML = `<h2>主观手感确认${tag?'（'+tag+'）':''}</h2>
+      <div class="sub" style="text-align:center">已尽力加深测试，仍未在统计上分出高下。<br>
+      这两个值里，哪一个用起来更舒服、更可控？<br>（仅此时作为最终推荐的参考）</div>
+      <div class="kv">[1] ${labelOf(A)}　　[2] ${labelOf(B)}　　[3] 差不多 / 跳过</div>`;
+    overlayEl.classList.remove('hidden');
+  });
+}
+function verdictText(tr){
+  if (!tr.st) return '未完成决胜阶段，取搜索领先者。';
+  const d = tr.st;
+  const seTxt = Number.isFinite(d.se) ? d.se.toFixed(2) : '∞';
+  const head = `配对样本 ${d.n} 组 · 差值 ${d.mean.toFixed(1)} 分 · 标准误 ${seTxt} · 阈值 ${Number.isFinite(d.thr)?d.thr.toFixed(1):'∞'}`;
+  const slope = anchorSlopePerMin(tr);
+  const driftTxt = (slope===null) ? '' :
+    ` · 漂移 ${slope>=0?'+':''}${slope.toFixed(1)} 分/分钟（${Math.abs(slope)<0.4?'状态稳定':(slope>0?'学习中':'疲劳中')}）`;
+  const lastD = (tr.duelLog && tr.duelLog.length) ? tr.duelLog[tr.duelLog.length-1] : null;
+  const chTxt = (lastD && lastD.challenge)
+    ? (tr.verdict==='B' ? '<br><span style="color:#7fe0a0">模型正式挑战成功：推荐值已更新为挑战者。</span>'
+      : (tr.verdict==='A' ? '<br><span style="color:#ffb454">模型正式挑战未通过：原推荐值保持。</span>'
+                         : '<br><span style="color:#ffb454">模型正式挑战未分胜负：按区间中点处理。</span>'))
+    : '';
+  if (tr.verdict==='A') return `${head}${driftTxt}<br>判定：<b>${tr.pair.A.v.toFixed(2)}</b> 优于 ${tr.pair.B.v.toFixed(2)}${chTxt}`;
+  if (tr.verdict==='B') return `${head}${driftTxt}<br>判定：<b>${tr.pair.B.v.toFixed(2)}</b> 反超 ${tr.pair.A.v.toFixed(2)}${chTxt}`;
+  if (tr.verdict==='tie') return `${head}${driftTxt}<br>判定：深化 ${tr.deepenCount||0} 轮后仍<b>统计上不可分辨</b> → 取区间中点${chTxt}`;
+  return `${head}${driftTxt}<br>判定：深化后仍<b>不可分辨</b> → 按主观手感取值${chTxt}`;
+}
+function verdictPlain(tr){
+  if (!tr || !tr.st) return '未完成决胜。';
+  if (tr.verdict==='A') return `判定 ${tr.pair.A.v.toFixed(2)} 胜`;
+  if (tr.verdict==='B') return `判定 ${tr.pair.B.v.toFixed(2)} 胜（反超）`;
+  if (tr.verdict==='tie') return '判定：不可分辨（取区间中点）';
+  return '判定：不可分辨（按手感取值）';
+}
+
+/* ============================ 20. 主流程 ============================ */
+async function runHipFlow(){
+  const hip = tracks.hip;
+  await showKeyOverlay(`<h2>腰射测试 · 玩法</h2><div class="sub">
+    · <b>点击类</b>（快速定位 / 目标切换 / 微调点击）：准星移到目标上按 <b>左键点一下</b>；<br>
+    · <b>跟枪类</b>（平滑跟枪 / 变速跟枪 / 快速变向跟枪）：让准星持续覆盖移动目标，期间<b>按住左键持续开火</b>——命中时枪声会变亮；<br>
+    · 本流程跟枪类约占一半；其中「变速跟枪」「快速变向跟枪」难度已整体下调（靶圈更大、速度与换向更缓）；<br>
+    · <b>目标切换</b>：两个靶里只打<b>高亮</b>的那个，命中后另一个变为高亮；目标都在前方，不需要大幅转身；<br>
+    · <b>模型持续推算</b>：测试过程中，模型会随累积数据不断更新——搜索阶段它给出的候选会直接作为挑战者出场，决胜前后还会各安排一次实测对局（可在高级选项关闭）；<br>
+    · <b>拉枪范围</b>：只有<b>快速定位</b>会出现侧后方目标（最大 ±135°），屏幕边缘的箭头指示方向；<br>
+    · <b>脚本每段不同</b>：不会重复出现同一轨迹，按新鲜目标认真打即可；<br>
+    · 难度随轮次递增，并按你的得分自动抬升；失误可按 [R] 重开本段（重开会换新脚本，不计分）。</div>`);
+  chk();
+
+  const maxWarm = cfg.warmAdapt ? 3 : 1;
+  const warm = [];
+  for (let i=0;i<maxWarm;i++){
+    await transitionOverlay(`热身 ${i+1}/${maxWarm}：快速定位（Lv.2）`);
+    const r = await execBlock({task:'flick', L:2, sens:baseSens, seed:555, over:{trials:8}});
+    chk(); sessionClock += fin(r && r.elapsed, 0);
+    if (r && !(r.stats && r.stats.skipped)) warm.push(r.score);
+    if (warm.length >= 2){
+      const d = Math.abs(warm[warm.length-1] - warm[warm.length-2]);
+      if (d <= Math.max(2.5, 0.06*warm[warm.length-1])){
+        await showKeyOverlay(`<h2>热身完成（已收敛）</h2><div class="sub" style="text-align:center">
+          最近两次热身分数：${warm.slice(-2).map(x=>x.toFixed(1)).join(' → ')}，差值已小于收敛阈值，开始计分。</div>`);
+        chk(); break;
+      }
+      if (i === maxWarm-1){
+        await showKeyOverlay(`<h2>热身结束（未完全收敛）</h2><div class="sub" style="text-align:center">
+          分数仍在变化（${warm.slice(-2).map(x=>x.toFixed(1)).join(' → ')}）。已到达热身上限，继续开始计分；<br>
+          锚点校准会在后续测量中继续补偿这部分漂移。</div>`);
+        chk();
+      }
+    }
+  }
+  await transitionOverlay('热身：平滑跟枪（Lv.1 · 按住左键）');
+  const r2 = await execBlock({task:'track', L:1, sens:baseSens, seed:556, over:{duration:8}});
+  chk(); sessionClock += fin(r2 && r2.elapsed, 0);
+
+  await recordAnchor(hip, '起始锚点');
+  chk();
+
+  const hp = PLAN[cfg.lenKey] || PLAN.std;
+  const rounds = hp.search.map(([task,L],i)=>({ task, L, cap:hp.caps[Math.min(i,hp.caps.length-1)],
+    seed:10007*(i+1)+13 }));
+  let extras = 0;
+  for (let i=0;i<rounds.length;i++){
+    stageInfo = { phase:'搜索', idx:i+1, total:rounds.length };
+    await maybeRest(hip, false);
+    await prewarmTask(hip, rounds[i].task, effL(hip, rounds[i].L));
+    await fatigueCheck(hip);
+    const out = await runSearchRound(hip, { task:rounds[i].task, L:rounds[i].L, cap:rounds[i].cap,
+      seed:rounds[i].seed, i, total:rounds.length, extra:!!rounds[i].extra });
+    chk();
+    if (out && out.tied && extras < 2 && rounds[i].cap <= 0.08){
+      extras++;
+      rounds.splice(i+1, 0, { task:rounds[i].task, L:Math.min(LV_MAX, rounds[i].L+1),
+        cap:rounds[i].cap*0.7, seed:rounds[i].seed+555, extra:true });
+      await showKeyOverlay(`<h2>追加搜索轮</h2><div class="sub" style="text-align:center">
+        上一轮两个灵敏度打分接近（≤ ${SEARCH_MARGIN} 分）且步长已经很小，
+        因此自动<b>追加一轮</b>（步长再缩小 30%、难度 +1）继续区分。</div>`);
+      chk();
+    }
+    await anchorIfDue(hip, '搜索进度锚点');
+    chk();
+  }
+
+  stageInfo = { phase:'模型推算', idx:1, total:1 };
+  await runModelPair(hip, '腰射', 6, 812345);
+  chk();
+  await anchorIfDue(hip, '模型推算后');
+  chk();
+
+  const rested = await maybeRest(hip, true);
+  await fatigueCheck(hip);
+  if (!rested) await anchorIfDue(hip, '进入决胜前', 0);
+  chk();
+  const A0 = hip.leader, B0 = pickSecond(hip, A0);
+  hip.finalPair = { A:A0, B:B0 };
+  for (let k=0;k<hp.duels.length;k++){
+    stageInfo = { phase:'决胜', idx:k+1, total:hp.duels.length };
+    await runDuel({ track:hip, A:A0, B:B0, task:hp.duels[k].task, L:hp.duels[k].L,
+      seed:90001*(k+1)+7, main:true, deepen:false, duelId:k,
+      title:`决胜 ${k+1}/${hp.duels.length}（${TASK_NAME[hp.duels[k].task]} · Lv.${effL(hip,hp.duels[k].L)}）` });
+    chk();
+    await anchorIfDue(hip, `决胜 ${k+1} 后`);
+    await fatigueCheck(hip);
+    chk();
+  }
+  /* 持续推算：决胜后若累积了新数据、且模型又算出尚未测过的候选，再追加一次实测 */
+  stageInfo = { phase:'模型追加推算', idx:1, total:1 };
+  await runModelPair(hip, '腰射·决胜后', 7, 933001);
+  chk();
+  const R = await finalizeTrack(hip, {
+    budget: cfg.deepenHip, levelStart: Math.max(8, hp.duels[hp.duels.length-1].L),
+    taskList: ['turn','strafe','track','flick'], tag:'腰射' });
+  if (R && R.verdict === 'tie'){ await comfortOverlay(hip, '腰射'); decide(hip); }
+  chk();
+}
+async function main(){
+  await runHipFlow();
+  await finishAll(false);
+}
+async function finishAll(aborted){
+  eng.mode='done'; eng.session=false; eng.block=null;
+  try{ document.exitPointerLock(); }catch(e){}
+  exitFullscreen();
+  if (!REDUCED){
+    try{
+      overlayEl.innerHTML = `<h2>测试完成</h2><div class="sub" style="text-align:center">正在汇总结果…</div>`;
+      overlayEl.classList.remove('hidden');
+    }catch(e){}
+    await sleep(1050);
+  }
+  overlayEl.classList.add('hidden');
+  document.body.classList.remove('stage-on');
+  if (tracks.hip && !tracks.hip.rec && tracks.hip.pool && tracks.hip.pool.length) decide(tracks.hip);
+  stageEl.classList.add('hidden');
+  $('results').classList.remove('hidden');
+  try{ window.scrollTo(0,0); }catch(e){}
+  try{ renderResults(aborted); }
+  catch(e){ showFatal('结果渲染出错：' + ((e && e.message) || e)); }
+}
+function pickDeepenTarget(){
+  if (tracks.hip && tracks.hip.rec && tracks.hip.finalPair) return { tr:tracks.hip, tag:'腰射' };
+  return null;
+}
+
+/* ============================ 21. 图表（逐个出场） ============================ */
+function chartBars(canvas, labels, series, opts, prog){
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, padL=46, padR=16, padT=34, padB=54;
+  g.clearRect(0,0,W,H); g.fillStyle='#0d1220'; g.fillRect(0,0,W,H);
+  const n = labels.length; if (!n || !series.length) return;
+  const p = prog===undefined ? 1 : clamp01(prog);
+  const maxV = (opts && opts.max) || 100;
+  const Y = v=>H-padB-(v/maxV)*(H-padT-padB);
+  g.strokeStyle='#1c2636'; g.fillStyle='#7f93b0'; g.font='11px system-ui';
+  for (let i=0;i<=4;i++){
+    const v = maxV*i/4, y = Y(v);
+    g.beginPath(); g.moveTo(padL,y); g.lineTo(W-padR,y); g.stroke();
+    g.fillText(v.toFixed(0), 8, y+4);
+  }
+  const gw = (W-padL-padR)/n;
+  const bw = Math.min(26, gw/Math.max(1,(series.length+0.6)));
+  labels.forEach((lab,i)=>{
+    const t0 = (i/Math.max(1,n))*0.45;
+    const lp = clamp01((p - t0)/0.55);
+    const cx = padL + gw*(i+0.5);
+    series.forEach((s,si)=>{
+      const v = clamp(fin(s.values[i],0),0,maxV);
+      const y = Y(v*lp);
+      const x = cx - (series.length*bw)/2 + si*bw + bw*0.1;
+      g.fillStyle = s.color;
+      g.fillRect(x, y, Math.max(2,bw*0.8), H-padB-y);
+    });
+    if (opts && opts.markIdx === i){
+      const mA = clamp01((lp-0.72)/0.28);
+      if (mA > 0){
+        g.globalAlpha = mA;
+        g.strokeStyle='#ffffff'; g.lineWidth=1.5; g.setLineDash([3,3]);
+        const gx = cx - (series.length*bw)/2;
+        g.strokeRect(gx-4, padT-10, series.length*bw+8, H-padT-padB+8);
+        g.setLineDash([]);
+        g.fillStyle='#ffffff'; g.font='10px system-ui'; g.textAlign='center';
+        g.fillText('推荐', cx, padT-14);
+        g.textAlign='start';
+        g.globalAlpha = 1;
+      }
+    }
+    const lA = clamp01((lp-0.45)/0.45);
+    if (lA > 0){
+      g.globalAlpha = lA;
+      g.fillStyle='#c3d2e8'; g.font='11px system-ui'; g.textAlign='center';
+      g.fillText(lab, cx, H-padB+16);
+      g.textAlign='start';
+      g.globalAlpha = 1;
+    }
+  });
+  g.globalAlpha = clamp01(p/0.5);
+  let lx = padL;
+  series.forEach(s=>{
+    g.fillStyle = s.color; g.fillRect(lx, 12, 10, 10);
+    g.fillStyle='#c3d2e8'; g.font='11px system-ui';
+    g.fillText(s.name, lx+14, 21);
+    lx += 22 + s.name.length*12;
+  });
+  g.globalAlpha = 1;
+}
+function chartLines(canvas, series, prog){
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, padL=46, padR=16, padT=30, padB=44;
+  g.clearRect(0,0,W,H); g.fillStyle='#0d1220'; g.fillRect(0,0,W,H);
+  const all = [].concat.apply([], series.map(s=>s.pts));
+  if (!all.length) return;
+  const p = prog===undefined ? 1 : clamp01(prog);
+  const xs = all.map(pt=>pt[0]), ys = all.map(pt=>pt[1]);
+  let x0 = Math.min.apply(null,xs), x1 = Math.max.apply(null,xs);
+  let y0 = Math.min.apply(null,ys), y1 = Math.max.apply(null,ys);
+  if (x1-x0 < 1e-6) x1 = x0+1;
+  if (y1-y0 < 1e-6){ y0 -= 5; y1 += 5; }
+  const padY = (y1-y0)*0.15; y0 -= padY; y1 += padY;
+  const X = x=>padL+(x-x0)/(x1-x0)*(W-padL-padR);
+  const Y = y=>H-padB-(y-y0)/(y1-y0)*(H-padT-padB);
+  g.strokeStyle='#1c2636'; g.lineWidth=1;
+  for (let i=0;i<=4;i++){
+    const y = padT + i*(H-padT-padB)/4;
+    g.beginPath(); g.moveTo(padL,y); g.lineTo(W-padR,y); g.stroke();
+  }
+  g.fillStyle='#7f93b0'; g.font='11px system-ui';
+  for (let i=0;i<=4;i++){
+    const v = y1 - i*(y1-y0)/4;
+    g.fillText(v.toFixed(0), 8, padT + i*(H-padT-padB)/4 + 4);
+  }
+  for (let i=0;i<=4;i++){
+    const v = x0 + i*(x1-x0)/4;
+    g.fillText(v.toFixed(1)+'m', padL + i*(W-padL-padR)/4 - 8, H-padB+18);
+  }
+  const clipX = padL + (W-padL-padR)*p + 8;
+  series.forEach(s=>{
+    g.save();
+    g.beginPath(); g.rect(0,0,clipX,H); g.clip();
+    g.strokeStyle = s.color; g.lineWidth = 2; g.beginPath();
+    s.pts.forEach((pt,i)=>{ const px=X(pt[0]), py=Y(pt[1]); if (i===0) g.moveTo(px,py); else g.lineTo(px,py); });
+    g.stroke();
+    g.fillStyle = s.color;
+    s.pts.forEach(pt=>{
+      const px = X(pt[0]);
+      if (px <= clipX){ g.beginPath(); g.arc(px, Y(pt[1]), 3, 0, 6.283); g.fill(); }
+    });
+    g.restore();
+  });
+  let lx = padL;
+  series.forEach(s=>{
+    g.fillStyle = s.color; g.fillRect(lx, 12, 10, 10);
+    g.fillStyle='#c3d2e8'; g.font='11px system-ui'; g.fillText(s.name, lx+14, 21);
+    lx += 22 + s.name.length*12;
+  });
+}
+
+/* ============================ 22. 结果渲染（自动下滑 · 逐项揭晓 · 结论压轴） ============================ */
+function diagHTML(tr, tag){
+  if (!tr || !tr.anchors || !tr.anchors.length) return '';
+  const slope = anchorSlopePerMin(tr);
+  const s0 = tr.anchors[0].s;
+  const rows = tr.anchors.map((a,i)=>`<tr><td>${i+1}</td><td>${(a.t/60).toFixed(1)}</td>
+    <td>${a.seg+1}</td><td>${a.s.toFixed(1)}</td>
+    <td>${(a.s-s0>=0?'+':'')}${(a.s-s0).toFixed(1)}</td><td>${a.label||''}</td></tr>`).join('');
+  const trend = (slope===null) ? '样本不足，无法估计'
+    : (Math.abs(slope) < 0.4 ? '<b>基本稳定</b>（学习/疲劳漂移很小，结论更可信）'
+      : (slope>0 ? `上升 <b>+${slope.toFixed(1)} 分/分钟</b>（练习效应为主；分数已补偿）`
+                 : `下降 <b>${slope.toFixed(1)} 分/分钟</b>（疲劳为主；建议缩短会话或分次测）`));
+  return `<div class="plain"><div>${tag} · 漂移趋势：${trend}　·　锚点 ${tr.anchors.length} 个　·　段数 ${tr.seg+1}　·　疲劳事件 ${tr.fatigueEpisodes||0} 次
+    ${tr.deepStopped?'　·　<span style="color:#ffb454">因疲劳提前停止深化</span>':''}
+    ${tr.recovered?'　·　休息后已恢复':''}</div>
+    <table><tr><th>#</th><th>时间(分)</th><th>段</th><th>锚点分</th><th>相对首个</th><th>说明</th></tr>${rows}</table>
+    <p class="hint">锚点 = 固定任务 + 固定脚本的一小段“状态测量”，不参与灵敏度比较，只用于估计状态变化并补偿漂移（上限 ±15 分）。</p></div>`;
+}
+function aimHTML(tr, tag){
+  const cands = tr.pool.filter(c=>c.data && c.data.blocks);
+  if (!cands.length) return '';
+  const rows = cands.map(c=>{
+    const st = aimStatsOf(c) || {};
+    const cent = (st.cent===null||st.cent===undefined) ? null : (1-st.cent)*100;
+    const nonOver = (st.over===null||st.over===undefined) ? null : (1-Math.min(1,st.over))*100;
+    const fire = (st.fireCov===null||st.fireCov===undefined) ? null : st.fireCov*100;
+    return `<tr><td>${labelOf(c)}</td>
+      <td style="min-width:150px">${st.hitRate===null||st.hitRate===undefined?'—':barHTML(st.hitRate*100)}</td>
+      <td style="min-width:150px">${cent===null?'—':barHTML(cent)}</td>
+      <td style="min-width:150px">${nonOver===null?'—':barHTML(nonOver)}</td>
+      <td>${(st.meanTT===null||st.meanTT===undefined)?'—':(st.meanTT*1000).toFixed(0)+'ms'}</td>
+      <td>${(st.miss===null||st.miss===undefined)?'—':st.miss.toFixed(2)+'°'}</td>
+      <td style="min-width:150px">${fire===null?'—':barHTML(fire)}</td></tr>`;
+  }).join('');
+  const runs = (tr.modelLog || []);
+  const oc = o => o==='win' ? '胜（成为基准）' : (o==='lose' ? '未获胜' : (o==='tie' ? '平分' : '—'));
+  const prop = !cfg.modelOn ? '数据建模已关闭。'
+    : (runs.length
+      ? `模型持续推算 <b>${runs.length}</b> 次（实测对决 ${runs.filter(r=>r.outcome).length} 次，其中胜 <b>${runs.filter(r=>r.outcome==='win').length}</b> 次）；最近一次：${runs[runs.length-1].v.toFixed(2)}（${runs[runs.length-1].stage}）→ ${oc(runs[runs.length-1].outcome)}`
+      : '本次未触发模型推算（数据点不足、候选与已测值重复，或拟合顶点无效）。');
+  return `<div class="plain"><table><tr><th>值</th><th>命中率</th><th>居中度</th><th>不过冲</th>
+    <th>平均点击</th><th>失误距离</th><th>开火占比</th></tr>${rows}</table>
+    <p class="hint">${prop}<br>
+    命中率：点击类 = 命中/出靶，跟枪类 = 命中弹数/发射弹数（同一候选会合并统计）；居中度 = 点击时准星离中心的角度占目标半径的比例；
+    不过冲 = 1−过冲比例；失误距离 = 失误点击时准星离最近目标的角度；开火占比仅对跟枪类有效。</p></div>`;
+}
+function modelHTML(tr, tag){
+  if (!cfg.modelOn) return '';
+  const cands = tr.pool.filter(c=>c.data && c.data.blocks);
+  const scPts = cands.map(c=>[Math.log10(c.v), meanScore(tr,c)]).filter(p=>Number.isFinite(p[1])&&p[1]>0);
+  const osPts = cands.map(c=>{ const st=aimStatsOf(c); return st&&st.over!==null?[Math.log10(c.v), st.over]:null; }).filter(Boolean);
+  const scF = scPts.length>=3 ? quadFit(scPts) : null;
+  const osF = osPts.length>=3 ? quadFit(osPts) : null;
+  const f = (name, fit, kind)=>{
+    if (!fit) return `<div>${name}：数据点不足（<3 个候选有有效数据），未拟合。</div>`;
+    const vertex = -fit.b/(2*fit.a);
+    const ok = (kind==='max' ? fit.a<0 : fit.a>0) && vertex>fit.x0-0.05 && vertex<fit.x1+0.05;
+    return `<div>${name}：R²=${fit.r2.toFixed(2)}，顶点 ≈ <b>${Math.pow(10,vertex).toFixed(2)}</b>
+      ${ok?'（在覆盖范围内，可用作提议）':'（顶点在范围外或曲率方向不符，忽略）'}</div>`;
+  };
+  const log = (tr.modelLog || []);
+  const oc = o => o==='win' ? '<span style="color:#7fe0a0">胜</span>' : (o==='lose' ? '负' : (o==='tie' ? '平' : '—'));
+  const logTable = log.length ? `<div style="margin-top:10px">持续推算记录（共 ${log.length} 次；每次由“累积新数据 → 重新拟合 → 实测检验”构成）：</div>
+    <table><tr><th>#</th><th>时间(分)</th><th>时机</th><th>提议值</th><th>结果</th><th>拟合依据</th></tr>${
+    log.map((e,i)=>`<tr><td>${i+1}</td><td>${(e.t/60).toFixed(1)}</td><td>${e.stage}</td>
+      <td><b>${e.v.toFixed(2)}</b></td><td>${oc(e.outcome)}</td>
+      <td style="white-space:normal;min-width:220px">${e.bases||'—'}</td></tr>`).join('')}</table>` : '';
+  return `<div class="plain"><div>${tag} 拟合：</div>
+    ${f('候选值 → 平均分（找最高点）', scF, 'max')}
+    ${f('候选值 → 过冲指数（找最低点）', osF, 'min')}
+    <p class="hint">模型随测试持续推进：每累积约 ${MODEL.minNew} 段新数据即重新拟合；搜索阶段入选的候选直接作为挑战者出场，决胜前/后各安排一次实测对局。自动对局只与当前基准较量，不改动锁定的最终对决；若要让新候选正式挑战推荐值，请用结果页的「模型继续推算」（会重新锁定对决并重算推荐）。R² 低说明噪声大，此时它只值“多测了一个点”。</p>
+    ${logTable}</div>`;
+}
+function renderResults(aborted){
+  const dpi = cfg.dpi;
+  const hip = tracks.hip;
+  const hasHip = !!(hip && hip.rec);
+  const rm = $('refineMsg'); if (rm) rm.textContent = '';
+
+  document.querySelectorAll('#results .rv, #results .rvBlock, #results .rec').forEach(e=>e.classList.remove('on'));
+  try{ window.scrollTo(0,0); }catch(e){}
+
+  if (hasHip){
+    const rec = hip.rec, cm = cm360(dpi, rec), eDPI = dpi*rec;
+    const nearest01 = round2(Math.round(rec*10)/10);
+    const slope = anchorSlopePerMin(hip);
+    const stable = (slope===null) ? null : Math.abs(slope) < 0.4;
+    const runs = hip.modelLog || [];
+    const deepLine = hip.deepenCount
+      ? `已自动深化 <b>${hip.deepenCount} 轮</b>（累计 ${hip.st?hip.st.n:0} 组配对样本）`
+        + (hip.verdict==='tie'||hip.verdict==='tie-comfort' ? '，仍不可分辨' : '，已分出高下')
+      : '未触发深化（首轮即分出高下）';
+    const modelLine = cfg.modelOn
+      ? (runs.length ? `模型持续推算 <b>${runs.length} 次</b>（其中实测对决 ${runs.filter(r=>r.outcome).length} 次），结论已包含它的提议` : '本次未触发模型推算（数据点不足或候选重复）')
+      : '模型推算已关闭';
+    const tinyLine = hip.tinyGap ? '<span style="color:#ffb454">两个候选值差异 ≤1.2%，属于实际使用中几乎等价的水平。</span>' : '';
+    const fatLine = hip.deepStopped ? '<span style="color:#ffb454">检测到疲劳，自动深化被提前停止（有意为之）。休息后可用“再深化一轮”继续。</span>' : '';
+    const stabLine = (stable===null) ? '' : (stable
+      ? '状态稳定性：本次会话漂移很小，结论可信度较高。'
+      : '<span style="color:#ffb454">状态稳定性：存在明显漂移（'+(slope>0?'练习':'疲劳')+'为主 '+Math.abs(slope).toFixed(1)+' 分/分钟），建议分次重测。</span>');
+    const extraArr = [deepLine, modelLine, tinyLine, fatLine, stabLine].filter(Boolean);
+    const candN = hip.pool.filter(c=>c.blocks.length>0).length;
+    const pairN = hip.st ? hip.st.n : 0;
+    const thrTxt = (hip.st && Number.isFinite(hip.st.thr)) ? hip.st.thr.toFixed(1) : '—';
+    $('resMain').innerHTML = `<div class="box">
+      <div class="hint rv" id="rvDone">全部环节完成 · 数据比对结束</div>
+      <div class="hint rv" id="rvEvidence">比对依据：候选值 <b>${candN}</b> 个 · 配对样本 <b>${pairN}</b> 组 · 噪声阈值 <b>${thrTxt}</b> 分 · 自动深化 <b>${hip.deepenCount||0}</b> 轮 · 模型推算 <b>${runs.length}</b> 次</div>
+      <div class="hint rv" id="rvLabel" style="font-size:15px;color:#cdd9ec">综合以上全部证据，最合适的腰射灵敏度为</div>
+      <div class="rec" id="recNum">0.00</div>
+      <div class="rv" id="rvMeta">eDPI <b>${eDPI.toFixed(0)}</b> · cm/360 ≈ <b>${cm.toFixed(2)} cm</b> · DPI ${dpi}</div>
+      <p class="hint rv" id="rvInterval">不可分辨区间：<b>${hip.interval[0].toFixed(2)} – ${hip.interval[1].toFixed(2)}</b><br>
+      最近 0.1 档：<b>${nearest01.toFixed(1)}</b>（偏差 ${(rec-nearest01>=0?'+':'')}${(rec-nearest01).toFixed(2)}）·
+      若只支持 0.1 档：可把 DPI 调至 ≈ <b>${(dpi*(rec/nearest01)).toFixed(0)}</b> 并填 ${nearest01.toFixed(1)}</p>
+      <p class="hint rv" id="rvExtra">${extraArr.join('<br>')}</p>
+      <p class="hint rv" id="rvVerdict">${verdictText(hip)}</p>
+    </div>`;
+  } else {
+    $('resMain').innerHTML = `<div class="box rv"><p>没有可用数据。</p>
+      <p class="hint">${aborted?'本次测试被提前结束。':''}至少完整跑完 2–3 个搜索回合再看结果。</p></div>`;
+  }
+
+  const primary = (hip && hip.pool && hip.sorted && hip.sorted.length) ? hip : null;
+  const cbScore = $('cbScore'), cbElo = $('cbElo'), cbAim = $('cbAim'), cbDrift = $('cbDrift');
+  const runners = [];
+
+  if (primary && primary.sorted && primary.sorted.length){
+    const labels = primary.sorted.map(c=>c.v.toFixed(2));
+    const clickVals = primary.sorted.map(c=>{ const v = famMean(primary,c,'click'); return v===null?0:v; });
+    const trackVals = primary.sorted.map(c=>{ const v = famMean(primary,c,'track'); return v===null?0:v; });
+    const series = [];
+    if (clickVals.some(v=>v>0)) series.push({ name:'点击类', color:'#ffce66', values:clickVals });
+    if (trackVals.some(v=>v>0)) series.push({ name:'跟枪类', color:'#78d2ff', values:trackVals });
+    if (!series.length) series.push({ name:'平均分', color:'#5b8cff', values:primary.sorted.map(c=>meanScore(primary,c)) });
+    const markIdx = primary.sorted.findIndex(c=>Math.abs(c.v-primary.rec)<1e-9);
+    cbScore.classList.remove('hidden');
+    runners.push({ el:cbScore, wait:1100, run:()=>animateChart($('chartScore'), 1050,
+      p=>chartBars($('chartScore'), labels, series, { max:100, markIdx }, p)) });
+  } else cbScore.classList.add('hidden');
+
+  if (hasHip){
+    cbElo.classList.remove('hidden');
+    runners.push({ el:cbElo, wait:1000, run:()=>animateChart($('resChart'), 950, p=>renderChart($('resChart'), hip, p)) });
+  } else cbElo.classList.add('hidden');
+
+  if (primary && primary.sorted){
+    const cs = primary.sorted.filter(c=>c.data && c.data.blocks);
+    if (cs.length){
+      const labels = cs.map(c=>c.v.toFixed(2));
+      const hitV = cs.map(c=>{ const st=aimStatsOf(c); return st&&st.hitRate!==null?st.hitRate*100:0; });
+      const centV = cs.map(c=>{ const st=aimStatsOf(c); return st&&st.cent!==null?(1-st.cent)*100:0; });
+      const nonOverV = cs.map(c=>{ const st=aimStatsOf(c); return st&&st.over!==null?(1-Math.min(1,st.over))*100:0; });
+      const fireV = cs.map(c=>{ const st=aimStatsOf(c); return st&&st.fireCov!==null?st.fireCov*100:0; });
+      const series = [
+        { name:'命中率', color:'#7fe0a0', values:hitV },
+        { name:'居中度', color:'#ffce66', values:centV },
+        { name:'不过冲', color:'#78d2ff', values:nonOverV }
+      ];
+      if (fireV.some(v=>v>0)) series.push({ name:'开火占比', color:'#ff9a9a', values:fireV });
+      cbAim.classList.remove('hidden');
+      runners.push({ el:cbAim, wait:1100, run:()=>animateChart($('chartAim'), 1050,
+        p=>chartBars($('chartAim'), labels, series, { max:100 }, p)) });
+    } else cbAim.classList.add('hidden');
+  } else cbAim.classList.add('hidden');
+
+  const dSeries = [];
+  if (hip && hip.anchors && hip.anchors.length >= 2)
+    dSeries.push({ name:'腰射', color:'#ffd166', pts: hip.anchors.map(a=>[a.t/60, a.s]) });
+  if (dSeries.length){
+    cbDrift.classList.remove('hidden');
+    runners.push({ el:cbDrift, wait:1100, run:()=>animateChart($('chartDrift'), 1050,
+      p=>chartLines($('chartDrift'), dSeries, p)) });
+  } else cbDrift.classList.add('hidden');
+
+  let aim = '';
+  if (hip && hip.pool && hip.pool.length) aim += aimHTML(hip, '腰射') + modelHTML(hip, '腰射');
+  $('resAim').innerHTML = aim || `<p class="hint">没有可用于诊断的瞄准数据。</p>`;
+
+  let diag = '';
+  if (hip && hip.anchors && hip.anchors.length) diag += diagHTML(hip, '腰射');
+  $('resDiag').innerHTML = diag || `<p class="hint">未启用锚点校准（或数据不足），无法给出状态漂移诊断。</p>`;
+
+  if (hip && hip.sorted && hip.sorted.length){
+    $('resCands').innerHTML = `<table><tr><th>灵敏度</th><th>cm/360</th><th>平均分</th><th>点击类</th>
+      <th>跟枪类</th><th>段数</th><th>胜/负</th></tr>` +
+      hip.sorted.map(c=>{
+        const fc = famMean(hip,c,'click'), ft = famMean(hip,c,'track');
+        return `<tr><td>${c.v.toFixed(2)}</td><td>${cm360(dpi,c.v).toFixed(1)}</td>
+          <td style="min-width:150px">${barHTML(meanScore(hip,c))}</td>
+          <td style="min-width:140px">${fc===null?'—':barHTML(fc)}</td>
+          <td style="min-width:140px">${ft===null?'—':barHTML(ft)}</td>
+          <td>${c.blocks.length}</td><td>${c.wins}/${c.losses}</td></tr>`;
+      }).join('') + '</table>';
+  } else $('resCands').innerHTML = '';
+
+  const rl = hip ? hip.roundLog : [];
+  $('resRounds').innerHTML = rl.length ? `<table><tr><th>#</th><th>任务</th><th>难度</th><th>类型</th><th>A</th><th>A 分</th><th>B</th><th>B 分</th><th>胜</th></tr>` +
+    rl.map(r=>`<tr><td>${r.title}</td><td>${TASK_NAME[r.task]}</td><td>Lv.${r.L}</td>
+      <td>${r.isModel?'模型推算':(r.isExtra?'追加':'搜索')}</td>
+      <td>${r.a.v.toFixed(2)}</td><td>${r.sa.toFixed(1)}</td>
+      <td>${r.b.v.toFixed(2)}</td><td>${r.sb.toFixed(1)}</td>
+      <td>${r.winner==='tie'?'平':(r.winner==='A'?r.a.v.toFixed(2):r.b.v.toFixed(2))}</td></tr>`).join('') + '</table>' : '';
+
+  const duels = [];
+  if (hip) hip.duelLog.forEach(d=>duels.push({tag:'腰射', tr:hip, d}));
+  $('resDuels').innerHTML = duels.length ? `<table><tr><th>类别</th><th>任务</th><th>难度</th><th>类型</th><th>A</th><th>B</th>
+    <th>A 均值(段)</th><th>B 均值(段)</th><th>配对差值</th></tr>` +
+    duels.map(({tag,d})=>{
+      const pd = (d.sA.length>=2&&d.sB.length>=2)
+        ? `${(d.sA[0]-d.sB[0]).toFixed(1)} / ${(d.sA[1]-d.sB[1]).toFixed(1)}` : '—';
+      return `<tr><td>${tag}</td><td>${TASK_NAME[d.task]}</td><td>Lv.${d.L}</td>
+      <td>${d.challenge?'挑战':(d.main?'决胜':(d.deepen?'深化':'复核'))}</td>
+      <td>${d.A.v.toFixed(2)}</td><td>${d.B.v.toFixed(2)}</td>
+      <td>${avg(d.sA).toFixed(1)} (${d.sA.length})</td><td>${avg(d.sB).toFixed(1)} (${d.sB.length})</td>
+      <td>${pd}</td></tr>`; }).join('') + '</table>' : '';
+
+  const notes = [];
+  if (aborted) notes.push('本次测试被提前结束，可靠性低于完整流程。');
+  notes.push('测量范围：腰射灵敏度（1 鼠标计数 = 0.022°，与游戏原始输入换算一致）。');
+  notes.push('拉枪范围：只有「快速定位」会出现侧后方目标（±135°，累计 270°），屏幕边缘箭头指示方向；「目标切换」的目标始终在正前方（±约 50°，任何情况下不超过 90°），只考验两靶间的转移与落点精度。');
+  notes.push('计分脚本每段独立：左右方向严格等量、距离按分位分层抽样后随机打乱、广角数量固定，同一会话内不存在重复轨迹；不同会话脚本也不同（随机盐）。A/B 两套脚本难度构成一致，脚本难度差不会混入灵敏度比较。');
+  notes.push('状态校准“锚点”是唯一使用固定脚本的环节——它是测量状态的恒定尺子，不参与灵敏度比较；若锚点分数随会话走低/走高，代表疲劳/练习，而非灵敏度差异。');
+  notes.push('跟枪靶为圆形标记（平滑=青色 / 变速=红色 / 快速变向=紫色），<b>靶圈半径即真实命中判定半径</b>；命中 / 脱靶仅通过枪声与靶圈高亮反馈。');
+  notes.push('跟枪难度（已按要求整体下调）：「变速跟枪」靶圈 = 同难度基准 ×1.60（4.80° → 1.28°，面积 ≈ 2.6 倍），速度 20–60°/s，换向间隔 0.42–2.50 s；「快速变向跟枪」靶圈 = 同难度基准 ×2.20（封顶 5.5°，5.50° → 1.76°，面积 ≈ 4.8 倍），速度 24–66°/s，换向间隔 0.42–1.60 s，速度跟随常数 0.075–0.14 s。');
+  notes.push('跟枪类的定位：因难度下调，这两项更接近“覆盖稳定性 / 耐力”指标，对灵敏度细微差异的区分力弱于点击类与平滑跟枪；总分由点击类与跟枪类各半构成。');
+  notes.push('数据建模（持续推算）：每累积约 '+MODEL.minNew+' 段新数据重新拟合一次（分数顶点 + 过冲最低点）；搜索阶段模型候选会直接作为挑战者出场，决胜前后还各安排一次实测对局。没有可测的新候选时不会有额外对局。自动对局只与当前基准较量、不改动锁定的最终对决；“正式挑战”需在结果页手动发起（2 组 ABBA、共 8 段，均值超过噪声阈值才更新推荐）。');
+  notes.push('流程长度：快速 / 标准 / 完整约为 8 / 15 / 18 分钟（不含休息与自动深化）；标准流程触发自动深化与模型追加对局时，最坏约 21 分钟。');
+  notes.push('评分口径：不含保底分；速度项 1.4 次幂、居中项 1.25 次幂以放大中段差异；自适应难度阈值 ≥86 / ≥78 / ≤44 / ≤34。');
+  notes.push('科学控制：ABBA 抵消线性漂移 + 锚点补偿残差 + 定时休息 + 疲劳时停止深化；但练习与疲劳无法被完全消除，最彻底的做法是分次测试。');
+  if (cfg.fov > 110) notes.push('本次按 FOV '+cfg.fov+' 渲染（依赖 cl_fovScale 配置），若游戏内未生效则视野与游戏不一致。');
+  if (eng.raw === 'unknown') notes.push('鼠标输入未确认获得“未加速（RAW）”模式，若结果与手感差别大，建议用 Chrome/Edge 并确认系统指针加速已关闭。');
+  notes.push('精度说明：0.01 是“设置精度”而非“测量精度”；差值小于约 2 分仍会被判为不可分辨。');
+  notes.push('浏览器与游戏是两套输入/渲染管线，结果是统计估计：建议游戏内实际试玩 1–2 天再决定是否微调。');
+  $('resNotes').innerHTML = notes.map(n=>'· '+n).join('<br>');
+
+  const beats = [];
+  const push = (el, wait, run, scrollEl, sDur)=>{
+    if (!el && !scrollEl && !run) return;
+    beats.push({ el, wait:fin(wait,340), run, scrollEl:scrollEl||null, scrollDur:sDur });
+  };
+
+  push($('hRes'), 360, null, $('hRes'), 0);
+  push($('rvIntro'), 520);
+  runners.forEach(r=>push(r.el, r.wait, r.run, r.el, 560));
+  push($('hDetail'), 260, null, $('hDetail'), 520);
+  document.querySelectorAll('#results details').forEach(d=>push(d, 140));
+  push($('hFinal'), 320, null, $('resMain'), 620);
+  if (hasHip){
+    const rn = $('recNum');
+    push($('rvDone'), 420);
+    push($('rvEvidence'), 640);
+    push($('rvLabel'), 520);
+    if (rn) beats.push({ el:rn, wait:950, run:()=>countUp(rn, hip.rec, 2, 1000) });
+    push($('rvMeta'), 380);
+    push($('rvInterval'), 400);
+    const exEl = $('rvExtra');
+    if (exEl && exEl.textContent.trim()) push(exEl, 400); else if (exEl) exEl.classList.add('on');
+    push($('rvVerdict'), 600);
+  } else {
+    const nb = $('resMain').firstElementChild;
+    if (nb) push(nb, 520);
+  }
+  push($('resActions'), 0);
+
+  runReveal(beats);
+}
+function renderChart(canvas, tr, prog){
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, padL=58, padR=22, padT=18, padB=42;
+  g.clearRect(0,0,W,H); g.fillStyle='#0d1220'; g.fillRect(0,0,W,H);
+  if (!tr || !tr.sorted || !tr.sorted.length) return;
+  const p = prog===undefined ? 1 : clamp01(prog);
+  const xs = tr.sorted.map(k=>k.X), ys = tr.sorted.map(k=>k.elo);
+  const pad = (Math.max.apply(null,xs)-Math.min.apply(null,xs))*0.12 + 0.02;
+  const x0 = Math.min.apply(null,xs)-pad, x1 = Math.max.apply(null,xs)+pad;
+  const y0 = Math.min.apply(null,ys)-20, y1 = Math.max.apply(null,ys)+20;
+  const X = x=>padL+(x-x0)/(x1-x0)*(W-padL-padR);
+  const Y = y=>H-padB-(y-y0)/(y1-y0)*(H-padT-padB);
+  g.strokeStyle='#243044'; g.lineWidth=1;
+  g.beginPath(); g.moveTo(padL,H-padB); g.lineTo(W-padR,H-padB); g.moveTo(padL,padT); g.lineTo(padL,H-padB); g.stroke();
+  const n = tr.sorted.length;
+  tr.sorted.forEach((c,i)=>{
+    const st = clamp01((p - (i/Math.max(1,n))*0.7)/0.3);
+    if (st <= 0) return;
+    const px = X(c.X), py = Y(c.elo);
+    const isRec = Math.abs(c.v - tr.rec) < 0.005;
+    g.globalAlpha = st;
+    g.beginPath(); g.arc(px,py,Math.max(0.6,(isRec?9:5.5)*st),0,6.283);
+    g.fillStyle = isRec ? '#ffd166' : '#5b8cff'; g.fill();
+    if (isRec && st > 0.7){
+      g.globalAlpha = (st-0.7)/0.3;
+      g.strokeStyle='#fff'; g.lineWidth=2; g.stroke();
+    }
+    g.globalAlpha = st;
+    g.fillStyle='#c3d2e8'; g.font='12px system-ui';
+    g.fillText(c.v.toFixed(2), px-14, py-12);
+    g.globalAlpha = 1;
+  });
+  g.fillStyle='#7f93b0'; g.font='12px system-ui';
+  g.fillText('灵敏度（对数刻度）', W/2-48, H-10);
+  g.save(); g.translate(14,H/2+30); g.rotate(-Math.PI/2); g.fillText('ELO',0,0); g.restore();
+}
+
+/* ============================ 23. 配置 / 预览 / 按钮 ============================ */
+function readCfgSoft(){
+  cfg.dpi = clamp(parseInt($('dpi').value)||800,100,6400);
+  const s = parseFloat($('sens').value); cfg.startSens = (isFinite(s)&&s>0)? s : null;
+  cfg.fovBasis = $('fovBasis').value;
+  const fv = parseFloat($('fov').value);
+  cfg.fovRaw = Number.isFinite(fv) ? fv : 110;
+  const fl = fovLimits();
+  cfg.fov = clamp(round1(cfg.fovRaw), fl.lo, fl.hi);
+  cfg.fovClamped = Math.abs(cfg.fov - round1(cfg.fovRaw)) > 1e-9;
+  cfg.aspect = parseFloat($('aspect').value); cfg.display = $('display').value;
+  cfg.lenKey = $('rounds').value; cfg.sfx = $('sfx').checked;
+  cfg.deepenHip = clamp(parseInt($('deepenHip').value)||3, 0, 10);
+  cfg.anchorMode = $('anchorMode').value;
+  cfg.restEvery = clamp(parseInt($('restEvery').value)||0, 0, 60);
+  cfg.warmAdapt = $('warmAdapt').checked;
+  cfg.preWarmTasks = $('preWarmTasks').checked;
+  cfg.adaptiveDiff = $('adaptiveDiff').checked;
+  cfg.modelOn = $('modelOn').checked;
+  cfg.trackSfx = $('trackSfx').checked;
+  cfg.edgeArrow = $('edgeArrow').checked;
+}
+function readCfg(){ readCfgSoft(); }
+function computeBounds(){
+  const lo = round2(clamp(sensForCm(110, cfg.dpi), 0.05, 20));
+  let hi = round2(clamp(sensForCm(12, cfg.dpi), 0.1, 20));
+  if (hi <= lo+0.05) hi = round2(lo+0.2);
+  bounds = { lo, hi };
+}
+function estimateTime(){
+  const hipMin = ({quick:5, std:12, full:15}[cfg.lenKey] || 12);
+  const diag = cfg.anchorMode==='off' ? 0 : 2;
+  const modelAdd = cfg.modelOn ? 1 : 0;
+  const base = hipMin + diag + modelAdd;
+  const worst = base + cfg.deepenHip*1.5 + (cfg.modelOn ? 1 : 0);
+  return { base:Math.round(base), worst:Math.round(worst) };
+}
+function updatePreview(){
+  try{
+    readCfgSoft(); syncFovInputLimits();
+    const dpi = cfg.dpi;
+    const sens = cfg.startSens || 1120/dpi;
+    const t = estimateTime();
+    const fl = fovLimits();
+    let clampNote = '';
+    if (cfg.fovClamped) clampNote = ` <span style="color:#ffb454">⚠ 输入 ${cfg.fovRaw} 超出 ${fl.lo}–${fl.hi}，按 ${cfg.fov} 处理</span>`;
+    let warn = '';
+    if (cfg.fov > 110){
+      const sc = cfg.fovBasis === 'h169' ? (1 + (cfg.fov-70)*0.014) : null;
+      warn = '<br><span style="color:#ffb454">⚠ 超过游戏内上限 110，需在启动项执行 cl_fovScale'
+        + (sc ? (' ≈ ' + sc.toFixed(2)) : '')
+        + '（社区近似：1.00=70 / 1.27=90 / 1.55=110 / 1.70=120），请先在游戏内确认已生效。</span>';
+    }
+    $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
+      · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}<br>
+      <b>预计有效瞄准时长 ≈ ${t.base} 分钟</b>（不含休息；含模型持续推算的份额）；最坏约 ${t.worst} 分钟。${warn}`;
+  }catch(e){}
+}
+function buildLvTable(){
+  $('lvTable').innerHTML = [1,4,8,12].map(L=>{
+    const p = levelParams('flick', L), m = levelParams('micro', L),
+          q = levelParams('strafe', L), s = levelParams('track', L), u = levelParams('turn', L);
+    return `<div>Lv.${L} · 快速定位：目标 ${p.R.toFixed(2)}° · 漂移 ${p.drift.toFixed(1)}°/s · 时限 ${p.timeout.toFixed(2)}s ·
+      距离 ${p.dMin.toFixed(0)}–${p.dMax.toFixed(0)}° · 广角 ${(p.wideFrac*100).toFixed(0)}%（至 ±${p.wideMax.toFixed(0)}°） · 目标数 ${p.trials}　|　
+      目标切换：目标 ${levelParams('switch',L).R.toFixed(2)}° · 两靶间距 ${levelParams('switch',L).gap.toFixed(0)}°（仅前方）　|　
+      微调点击：目标 ${m.R.toFixed(2)}° · 漂移 ${m.drift.toFixed(1)}°/s · 时限 ${m.timeout.toFixed(2)}s　|　
+      平滑跟枪：目标 ${s.R.toFixed(2)}° · 速度 ${s.speed.toFixed(0)}°/s · 时长 ${s.duration}s　|　
+      变速跟枪：目标 ${q.R.toFixed(2)}° · 速度 ${q.speed.toFixed(0)}°/s · 反转 ${q.revMin.toFixed(2)}–${q.revMax.toFixed(2)}s　|　
+      快速变向：目标 ${u.R.toFixed(2)}° · 速度 ${u.speed.toFixed(0)}°/s · 变向 ${u.revMin.toFixed(2)}–${u.revMax.toFixed(2)}s · 跟随 ${u.tau.toFixed(3)}s</div>`;
+  }).join('');
+  const dim = dimProgress(6);
+  $('lvTable').innerHTML += `<div class="dimrow" style="margin-top:8px">各维度推进指数：大小 0.85 / 速度 1.00 / 时限 1.05 / 距离 1.15 / 密度 1.30（数值越小启动越早）；
+    Lv.6 时各维度进度：大小 ${dim.size.toFixed(2)} / 速度 ${dim.speed.toFixed(2)} / 密度 ${dim.dens.toFixed(2)}。<br>
+    靶圈基准（平滑跟枪）：3.00° → 0.80°；「变速跟枪」= 基准 ×1.60（4.80° → 1.28°，面积 ≈ 2.6 倍）；「快速变向跟枪」= 基准 ×2.20（封顶 5.5°，5.50° → 1.76°，面积 ≈ 4.8 倍）；「微调点击」2.20° → 0.42°。
+    同一难度下，两个“下调”项目的靶圈明显大于其他项目。</div>`;
+}
+document.querySelectorAll('#setup input, #setup select').forEach(el=>{
+  el.addEventListener('input', updatePreview);
+  el.addEventListener('change', ()=>updatePreview());
+});
+document.querySelectorAll('#results details').forEach(d=>{
+  d.addEventListener('toggle', ()=>{ if (d.open) animateHtmlBars(d); });
+});
+$('startBtn').onclick = async ()=>{
+  try{
+    readCfg(); computeBounds(); updatePreview();
+    baseSens = round2(clamp(cfg.startSens || 1120/cfg.dpi, bounds.lo, bounds.hi));
+    sessionClock = 0; lastRestClock = -999;
+    SESSION_SALT = (Math.random()*2147483647)|0;
+    restEverySec = cfg.restEvery > 0 ? cfg.restEvery*60 : 0;
+    nextRestClock = restEverySec > 0 ? restEverySec : 1e9;
+    tracks = { hip: newTrack(baseSens, 0.20) };
+    eng.abort=false; eng.session=true; eng.restartBlock=false; eng.lmb=false;
+    eng.errCount=0; eng.errShown=false; effects=[]; eng.t0 = performance.now();
+    ensureAudio();
+    $('fatal').classList.add('hidden');
+    $('setup').classList.add('hidden'); $('results').classList.add('hidden');
+    stageEl.classList.remove('hidden');
+    document.body.classList.add('stage-on');
+    await goFullscreen();
+    layout(); setTimeout(layout, 200);
+    await postureGate();
+    const ok = await lockStage();
+    if (!ok) await waitForLock();
+    const warns0 = [];
+    if (eng.raw === 'unknown') warns0.push('⚠ 鼠标输入可能未启用未加速模式，结果可能受影响。');
+    if (cfg.fov > 110) warns0.push('⚠ 按 FOV '+cfg.fov+' 测试（>110 需 cl_fovScale）：请确认游戏内已生效。');
+    hudWarn.innerHTML = warns0.join('<br>');
+    const aspLabel = Math.abs(cfg.aspect-16/9)<1e-4 ? '16:9' : (Math.abs(cfg.aspect-1.6)<1e-4 ? '16:10' : '4:3');
+    hudHint.style.opacity = '1';
+    hudHint.textContent = '空格 继续 · Esc 暂停 · R 重开本段'
+      + ` · FOV ${cfg.fov} · ${aspLabel}${cfg.display==='stretch'?' 拉伸':' 黑边'}`;
+    requestAnimationFrame(loop);
+    main().catch(err=>{
+      if (err === ABORT) finishAll(true);
+      else showFatal('测试流程出错：' + ((err && err.message) || err));
+    });
+  }catch(err){
+    console.error(err);
+    showFatal('无法开始测试：' + ((err && err.message) || err));
+    stageEl.classList.add('hidden');
+    $('setup').classList.remove('hidden');
+    document.body.classList.remove('stage-on');
+    exitFullscreen();
+  }
+};
+function buildSummary(){
+  const L = [];
+  const dpi = cfg.dpi;
+  const hip = tracks.hip;
+  if (hip && hip.rec){
+    L.push('【腰射】推荐 ' + hip.rec.toFixed(2) + '（eDPI ' + (dpi*hip.rec).toFixed(0) +
+      '，cm/360 ≈ ' + cm360(dpi,hip.rec).toFixed(2) + ' cm）');
+    L.push('  不可分辨区间 ' + hip.interval[0].toFixed(2) + ' – ' + hip.interval[1].toFixed(2) +
+      '；' + verdictPlain(hip) + '；深化 ' + (hip.deepenCount||0) + ' 轮；自适应偏移 ' + (hip.lvBias>0?'+':'') + hip.lvBias);
+    if (hip.modelLog && hip.modelLog.length){
+      const pw = hip.modelLog.filter(e=>e.outcome==='win').length;
+      L.push('  模型持续推算 ' + hip.modelLog.length + ' 次（实测 ' + hip.modelLog.filter(e=>e.outcome).length + ' 次，胜 ' + pw + ' 次）');
+    }
+  }
+  if (cfg.fov > 110) L.push('注意：FOV ' + cfg.fov + ' 依赖 cl_fovScale 配置，请确认游戏内已生效。');
+  L.push('（由 Apex 灵敏度实验台生成）');
+  return L.join('\n');
+}
+function fallbackCopy(t){
+  const ta = document.createElement('textarea');
+  ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  ta.remove();
+}
+$('copyBtn').onclick = ()=>{
+  const t = buildSummary();
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t));
+  else fallbackCopy(t);
+};
+$('restartBtn').onclick = ()=>location.reload();
+$('deepenBtn').onclick = async ()=>{
+  const target = pickDeepenTarget();
+  if (!target) return;
+  const {tr, tag} = target;
+  readCfg();
+  eng.abort=false; eng.session=true; eng.mode='wait';
+  $('results').classList.add('hidden'); stageEl.classList.remove('hidden');
+  document.body.classList.add('stage-on');
+  await goFullscreen(); layout();
+  if (!(await lockStage())) await waitForLock();
+  try{
+    restEverySec = cfg.restEvery > 0 ? cfg.restEvery*60 : 0;
+    const iter = (tr.deepenCount||0) + 1;
+    const list = ['turn','strafe','track','flick'];
+    const task = list[(iter-1) % list.length];
+    const baseL = Math.min(LV_MAX, 8 + Math.floor(iter/2));
+    stageInfo = { phase:`${tag}·深化`, idx:iter, total:'∞' };
+    await restPrompt('手动深化前建议休息');
+    tr.seg++;
+    await recordAnchor(tr, '手动深化前');
+    tr.fatigued = false; tr.fatigueRested = false;
+    await runDuel({ track:tr, A:tr.finalPair.A, B:tr.finalPair.B, task, L:baseL,
+      seed:(Date.now()%50000)+7, main:false, deepen:true, duelId:200+iter,
+      title:`${tag} 手动深化（${TASK_NAME[task]} · Lv.${effL(tr,baseL)}）` });
+    tr.deepenCount = iter;
+    await anchorIfDue(tr, '手动深化后', 0);
+  }catch(err){ if (err !== ABORT) console.error(err); }
+  await finishAll(eng.abort);
+};
+/* —— 模型继续推算：把模型新候选与当前推荐值做正式对决（2 组 ABBA），胜负达标才更新推荐 —— */
+$('modelBtn').onclick = async ()=>{
+  const msg = $('refineMsg');
+  const target = pickDeepenTarget();
+  if (!target){ if (msg) msg.textContent = '没有可继续推算的会话数据。'; return; }
+  const {tr, tag} = target;
+  readCfg();
+  if (!cfg.modelOn){ if (msg) msg.textContent = '模型建模已关闭（可在配置页开启后重新开始会话）。'; return; }
+  const mf = modelFresh(tr);
+  if (!mf){
+    if (msg) msg.textContent = `模型当前没有可测的新候选：需要至少 ${MODEL.minNew} 段新数据、且拟合顶点与已测值不重复。可以先「再深化一轮」积累数据后再试。`;
+    return;
+  }
+  const recNode = addCand(tr, vToX(tr.rec));
+  const cand = addCand(tr, vToX(mf.v));
+  if (cand === recNode){ if (msg) msg.textContent = '模型候选与当前推荐值相同，无需挑战。'; return; }
+  if (msg) msg.textContent = '';
+  eng.abort=false; eng.session=true; eng.mode='wait';
+  $('results').classList.add('hidden'); stageEl.classList.remove('hidden');
+  document.body.classList.add('stage-on');
+  await goFullscreen(); layout();
+  if (!(await lockStage())) await waitForLock();
+  try{
+    restEverySec = cfg.restEvery > 0 ? cfg.restEvery*60 : 0;
+    tr.finalPair = { A:recNode, B:cand };
+    tr.modelPairs = fin(tr.modelPairs,0) + 1;
+    const entry = { t:Math.round(sessionClock), v:cand.v, stage:'正式挑战', mode:'challenge',
+                    outcome:null, bases:fmtBases(mf.prop.bases) };
+    tr.modelLog.push(entry);
+    tr.modelNew = 0; tr.modelLastV = cand.v;
+    await restPrompt('模型正式挑战前建议休息');
+    tr.seg++;
+    await recordAnchor(tr, '挑战前校准');
+    const tasks = ['flick','track'];
+    for (let k=0;k<tasks.length;k++){
+      stageInfo = { phase:`${tag}·模型挑战`, idx:k+1, total:2 };
+      await runDuel({ track:tr, A:recNode, B:cand, task:tasks[k], L:8,
+        seed:640000 + k*1319 + (tr.modelPairs*9973), main:false, deepen:true, challenge:true,
+        duelId:300 + k,
+        title:`${tag} 模型正式挑战 ${k+1}/2（${TASK_NAME[tasks[k]]} · Lv.8）` });
+      chk();
+      await anchorIfDue(tr, `挑战 ${k+1} 后`, 0);
+    }
+    decide(tr);
+    entry.outcome = (tr.verdict === 'B') ? 'win' : (tr.verdict === 'A' ? 'lose' : 'tie');
+  }catch(err){ if (err !== ABORT) console.error(err); }
+  await finishAll(eng.abort);
+};
+
+/* ============================ 24. 主循环与渲染 ============================ */
+let lastT = performance.now();
+let vigGrad = null, vigKey = '';
+function ensureVignette(){
+  const key = view.Wl + 'x' + view.Hl;
+  if (vigGrad && key === vigKey) return vigGrad;
+  vigKey = key;
+  try{
+    const cx = view.Wl/2, cy = view.Hl/2;
+    const r0 = Math.min(view.Wl, view.Hl)*0.44, r1 = Math.max(view.Wl, view.Hl)*0.74;
+    vigGrad = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+    vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    vigGrad.addColorStop(1, 'rgba(0,0,0,0.34)');
+  }catch(e){ vigGrad = null; }
+  return vigGrad;
+}
+function frameError(e){
+  eng.errCount++;
+  if (eng.errCount === 1){ console.error('[frame]', e); }
+  if (eng.errCount > 30 && !eng.errShown){
+    eng.errShown = true;
+    hudWarn.innerHTML = '⚠ 渲染/逻辑异常：' + String((e&&e.message)||e).slice(0,90) + '<br>按 R 重开本段，或 Esc 暂停后结束。';
+  }
+}
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = clamp((fin(now,lastT)-lastT)/1000, 0, 0.05);
+  lastT = now;
+  if (stageEl.classList.contains('hidden')) return;
+  if (eng.mode === 'block' && eng.block){
+    gTime += dt;
+    try{ sanitize(); stepBlock(dt); }catch(e){ frameError(e); }
+  }
+  frameD.yaw = 0; frameD.pitch = 0;
+  try{ render(); }catch(e){ frameError(e); }
+  try{ updateHUD(); }catch(e){}
+  try{ watchdog(); }catch(e){}
+}
+function render(){
+  try{ ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle='#05070a'; ctx.fillRect(0,0,view.cw,view.ch); }catch(e){}
+  try{
+    ctx.setTransform(view.sx,0,0,view.sy,0,0);
+    const grad = ctx.createLinearGradient(0,0,0,view.Hl);
+    grad.addColorStop(0,'#0a1220'); grad.addColorStop(0.62,'#0c1626'); grad.addColorStop(1,'#060a12');
+    ctx.fillStyle = grad; ctx.fillRect(0,0,view.Wl,view.Hl);
+  }catch(e){}
+  let B = null;
+  try{ B = basisV(); }catch(e){ B = null; }
+  if (B){
+    try{ drawGround(B); }catch(e){}
+    try{ drawTargets(B); }catch(e){}
+    try{ drawEffects(B); }catch(e){}
+  }
+  try{
+    const vg = ensureVignette();
+    if (vg){ ctx.fillStyle = vg; ctx.fillRect(0,0,view.Wl,view.Hl); }
+  }catch(e){}
+  try{ drawOffscreen(); }catch(e){}
+  try{ drawCrosshair(); }catch(e){}
+}
+function drawGround(B){
+  const near = 0.25;
+  ctx.strokeStyle = 'rgba(120,150,190,0.10)'; ctx.lineWidth = 1;
+  const zOf = p => p[0]*B.F[0]+p[1]*B.F[1]+p[2]*B.F[2];
+  const lerpP = (a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+  const seg = (a,b)=>{
+    let z1 = zOf(a), z2 = zOf(b);
+    if (z1 < near && z2 < near) return;
+    if (z1 < near){ const t=(near-z1)/(z2-z1); a=lerpP(a,b,t); }
+    else if (z2 < near){ const t=(near-z2)/(z1-z2); b=lerpP(b,a,t); }
+    const p1 = project(a,B), p2 = project(b,B);
+    if (!p1 || !p2) return;
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
+  };
+  const RR = 60, st = 5;
+  for (let x=-RR;x<=RR;x+=st) seg([x,-1.7,-RR],[x,-1.7,RR]);
+  for (let z=-RR;z<=RR;z+=st) seg([-RR,-1.7,z],[RR,-1.7,z]);
+}
+function drawTargets(B){
+  const Bk = eng.block; if (!Bk || !Bk.targets) return;
+  const trackTask = isTrackTask(Bk.task);
+  for (const t of Bk.targets){
+    try{
+      if (!Number.isFinite(t.yaw) || !Number.isFinite(t.pitch) || !Number.isFinite(t.dist) || !Number.isFinite(t.R)) continue;
+      const a = clamp01(fin(t.alpha,1));
+      const p = project(sphToWorld(t.yaw, t.pitch, t.dist), B);
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      let rPx = targetPx(t.R)*(0.78+0.22*a);
+      if (!Number.isFinite(rPx) || rPx < 2) rPx = 2;
+      const isSw = (Bk.task === 'switch') && t.kind === 'switch';
+      let col = '255,206,102';
+      if (trackTask){
+        col = (Bk.task === 'track') ? '120,225,255'
+            : (Bk.task === 'strafe' ? '255,150,150' : '205,150,255');
+      }
+      if (isSw) col = t.isCurrent ? '120,225,255' : '150,175,205';
+      ctx.globalAlpha = a * (isSw && !t.isCurrent ? 0.5 : 1);
+      let fill = null;
+      try{
+        fill = ctx.createRadialGradient(p.x-rPx*0.25, p.y-rPx*0.25, Math.max(0.5,rPx*0.15), p.x, p.y, Math.max(0.6,rPx));
+        fill.addColorStop(0,'rgba(255,255,255,0.95)');
+        fill.addColorStop(0.35,`rgba(${col},0.95)`);
+        fill.addColorStop(1,`rgba(${col},0.55)`);
+      }catch(e){ fill = `rgba(${col},0.9)`; }
+      ctx.fillStyle = fill;
+      try{ ctx.beginPath(); ctx.arc(p.x,p.y,rPx,0,6.283); ctx.fill(); }catch(e){}
+      try{
+        ctx.lineWidth = Math.max(1.2, rPx*0.08);
+        ctx.strokeStyle = `rgba(${col},1)`;
+        ctx.beginPath(); ctx.arc(p.x,p.y,rPx,0,6.283); ctx.stroke();
+        if (isSw && t.isCurrent){
+          ctx.beginPath(); ctx.arc(p.x,p.y,rPx*1.35,0,6.283);
+          ctx.lineWidth = Math.max(1.2, rPx*0.07);
+          ctx.strokeStyle = 'rgba(120,225,255,0.85)'; ctx.stroke();
+        }
+        if (trackTask && eng.lmb && angTo(t) <= t.R){
+          ctx.beginPath(); ctx.arc(p.x,p.y,rPx*1.05,0,6.283);
+          ctx.lineWidth = Math.max(1.5, rPx*0.09);
+          ctx.strokeStyle = 'rgba(160,255,220,0.95)'; ctx.stroke();
+        }
+      }catch(e){}
+      ctx.globalAlpha = 1;
+    }catch(e){}
+  }
+  ctx.globalAlpha = 1;
+}
+function drawEffects(B){
+  for (let i=effects.length-1;i>=0;i--){
+    const e = effects[i], k = (gTime-e.t0)/0.3;
+    if (k > 1 || k < 0 || !Number.isFinite(k)){ effects.splice(i,1); continue; }
+    const p = project(e.pos, B);
+    if (!p || !Number.isFinite(p.x)) continue;
+    ctx.globalAlpha = 1-k;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(1,e.rpx*(1+1.6*k)), 0, 6.283); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+function drawOffscreen(){
+  if (!cfg.edgeArrow) return;
+  const Bk = eng.block; if (!Bk || !Bk.targets || Bk.ending) return;
+  const {hHalf} = halfFovs();
+  const cx = view.Wl/2, cy = view.Hl/2;
+  for (const t of Bk.targets){
+    if (t.state === 'dying') continue;
+    if (!Number.isFinite(t.yaw)) continue;
+    const rel = wrap180(t.yaw - cam.yaw);
+    if (Math.abs(rel) <= hHalf*0.95) continue;
+    const right = rel > 0;
+    const pitchRel = clamp(fin(t.pitch,0) - cam.pitch, -45, 45);
+    const mag = clamp(1 + Math.floor(Math.abs(rel)/45), 1, 3);
+    const isCur = (Bk.task==='switch') ? !!t.isCurrent : true;
+    let col = isCur ? 'rgba(140,225,255,0.95)' : 'rgba(150,175,205,0.45)';
+    if (Bk.task==='strafe') col = isCur ? 'rgba(255,160,160,0.95)' : 'rgba(150,175,205,0.45)';
+    if (Bk.task==='turn')   col = isCur ? 'rgba(210,165,255,0.95)' : 'rgba(150,175,205,0.45)';
+    const x = right ? view.Wl - 30 : 30;
+    const y = clamp(cy - view.f*Math.tan(rad(pitchRel)), 80, view.Hl-80);
+    const s = (view.Hl/1000)*(15 + mag*5);
+    ctx.save();
+    ctx.globalAlpha = clamp01(fin(t.alpha,1));
+    ctx.translate(x,y);
+    if (!right) ctx.scale(-1,1);
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.lineTo(-s, -s*0.62); ctx.lineTo(-s*0.72, 0); ctx.lineTo(-s, s*0.62);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+function drawCrosshair(){
+  const cx = view.Wl/2, cy = view.Hl/2;
+  ctx.strokeStyle = 'rgba(235,244,255,0.9)'; ctx.lineWidth = 1.8;
+  const gap = 5, len = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx-gap-len, cy); ctx.lineTo(cx-gap, cy);
+  ctx.moveTo(cx+gap, cy);     ctx.lineTo(cx+gap+len, cy);
+  ctx.moveTo(cx, cy-gap-len); ctx.lineTo(cx, cy-gap);
+  ctx.moveTo(cx, cy+gap);     ctx.lineTo(cx, cy+gap+len);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(235,244,255,0.9)';
+  ctx.beginPath(); ctx.arc(cx, cy, 1.6, 0, 6.283); ctx.fill();
+}
+function updateHUD(){
+  const B = eng.block;
+  if (B){
+    const deep = (stageInfo.phase||'').indexOf('深化') >= 0 ? ' · 深化' : '';
+    const trackTask = isTrackTask(B.task);
+    const tr = tracks.hip || null;
+    const pk = (tr && cfg.modelOn && tr.modelPeek)
+      ? `<br><span style="color:#7f93b0">模型实时推算 ≈ <b>${tr.modelPeek.toFixed(2)}</b>（持续更新）</span>` : '';
+    hudRound.innerHTML = `${stageInfo.phase} ${stageInfo.idx}/${stageInfo.total}${deep} · ${TASK_NAME[B.task]}<br>
+      ${levelLine(B.L, B.task)}${biasNote(tr)}<br>
+      灵敏度 <b>${B.sensEff.toFixed(2)}</b> · cm/360 ≈ ${cm360(cfg.dpi, B.sensEff).toFixed(1)}${pk}`;
+    if (trackTask){
+      const pct = (B.shotN>0) ? (B.shotOn/B.shotN*100).toFixed(0)+'%' : '—';
+      hudRight.textContent = `剩余 ${Math.max(0, (B.p.duration||0) - B.elapsed).toFixed(1)} s · `
+        + (eng.lmb ? '● 开火中' : '○ 按住左键') + ` · 子弹命中 ${pct}`;
+    } else if ((B.p.trials||0) > 0){
+      hudRight.textContent = `目标 ${Math.min(B.trialsDone+1, B.p.trials||0)}/${B.p.trials||0} · 命中 ${B.hits}`;
+    }
+  }
+  hudDiag.textContent = (document.pointerLockElement===stageEl ? 'LOCK✓' : 'NO-LOCK')
+    + (eng.block && eng.block.targets ? ' · 目标 ' + eng.block.targets.length : '');
+  if (eng.t0 && performance.now() - eng.t0 > 15000 && hudHint.style.opacity !== '0.45'){
+    hudHint.style.opacity = '0.45';
+  }
+}
+
+/* ============================ 25. 启动自检 ============================ */
+function smokeTest(){
+  const need = [fin,round1,clamp01,easeOutCubic,easeInOut,isTrackTask,animateChart,countUp,animateHtmlBars,
+    runReveal,tweenScrollTo,scrollToBeat,stopAutoScroll,ensureVignette,uiLocked,blockNonLeft,
+    seedOf,stratify,shuffledFlags,balancedSigns,det3,replaceCol,quadFit,barHTML,
+    dimProgress,levelParams,dimBars,barsHTML,levelLine,taskHint,
+    cm360,sensForCm,fovLimits,syncFovInputLimits,vFovHip,hFovHip,halfFovs,layout,watchdog,basisV,dirOf,sphToWorld,project,
+    angTo,errVec,targetPx,sanitize,onMove,onKey,lockStage,waitForLock,goFullscreen,exitFullscreen,
+    ensureAudio,sfxTone,sfx,ensureShotBuf,sfxShot,addHitFx,trackFire,buildScript,
+    buildTrackPath,initTrialParams,spawnFromScript,spawnTrackTarget,spawnMover,
+    swPlanFallback,swSpawn,spawnSwitchPair,makeCurrent,updateTargets,sampleTrial,sampleTracking,findHitTargetEx,fire,
+    trialScore,hitTarget,recordMiss,runBlock,execBlock,stepBlock,beginEnd,finalizeBlock,absorbData,
+    aimStatsOf,modelProposal,fmtBases,modelFresh,refreshModelPeek,aimLine,anchorSpec,recordAnchor,anchorIfDue,corrOf,scoreOf,
+    anchorSlopePerMin,restPrompt,maybeRest,fatigueCheck,prewarmTask,showKeyOverlay,transitionOverlay,
+    showPause,resume,abortTest,postureGate,updateBias,effL,biasNote,newTrack,xToV,vToX,clampX,
+    addCand,meanScore,famMean,proposeChallenger,pickSecond,labelOf,blockSpec,scoreLine,chk,
+    runPair,runSearchRound,runModelPair,runDuel,pairDiffStats,finalizeTrack,decide,
+    comfortOverlay,verdictText,verdictPlain,runHipFlow,main,finishAll,pickDeepenTarget,
+    chartBars,chartLines,diagHTML,aimHTML,modelHTML,renderResults,renderChart,readCfgSoft,
+    readCfg,computeBounds,estimateTime,updatePreview,buildLvTable,buildSummary,fallbackCopy,
+    frameError,loop,render,drawGround,drawTargets,drawEffects,
+    drawOffscreen,drawCrosshair,updateHUD,showFatal];
+  const miss = need.filter(f=>typeof f !== 'function');
+  if (miss.length) throw new Error('缺少函数：' + miss.join(' · '));
+}
+try{
+  buildLvTable();
+  smokeTest();
+  updatePreview();
+}catch(e){
+  showFatal('初始化自检失败：' + ((e && e.message) || e));
+}
+</script>
+</body>
+</html>

@@ -258,12 +258,27 @@
       </label>
       <label>显示模式
         <select id="display">
-          <option value="letterbox" selected>黑边</option>
-          <option value="stretch">拉伸填满</option>
+          <option value="letterbox" selected>黑边（保持比例，推荐）</option>
+          <option value="stretch">拉伸填满（画面会被拉变形）</option>
         </select>
       </label>
       <label><input type="checkbox" id="sfx" checked> 音效</label>
     </div>
+    <details>
+      <summary>显示模式：该选「黑边」还是「拉伸填满」？（点开查看）</summary>
+      <p class="hint">
+        · <b>先给结论</b>：<b>绝大多数人保持默认的「黑边」</b>。只有当你在游戏里<b>故意把画面拉变形</b>时（例如用 4:3 分辨率在 16:9 显示器上全屏拉伸），才选「拉伸填满」。<br>
+        · <b>这两者到底差在哪</b>：本页的打靶画面要按你选的<b>分辨率比例</b>来画。比例和屏幕不一致时——<br>
+        　「<b>黑边</b>」＝保持比例，四周留黑边。圆形靶就是正圆，屏幕上的角度比例与你选的 FOV 一致。<br>
+        　「<b>拉伸填满</b>」＝强行铺满整屏。画面被拉伸，<b>圆形靶会变成椭圆</b>，横向角度被放大。<br>
+        · <b>30 秒自测该选哪个</b>：进游戏，看远处的圆形物体（灯、桶、圆标）——<br>
+        　① 是<b>正圆</b>、屏幕比例和显示器一致 → 选<b>黑边</b>；<br>
+        　② 明显<b>被拉宽成椭圆</b>（画面变"扁"、水平方向被撑开）→ 选<b>拉伸填满</b>（这样本页的拉伸程度才和你游戏一致）；<br>
+        　③ 游戏里是<b>上下左右有黑边</b>、画面保持比例 → 选<b>黑边</b>。<br>
+        · <b>选错的后果</b>：屏幕上的角度比例会和你游戏里看到的不一致，<b>瞄准手感的参照就偏了</b>——但<b>不影响灵敏度结论本身</b>：本页的鼠标计数→角度换算是 1 计数 = 0.022°，与显示模式、分辨率比例都无关；同一会话内所有候选值也都在同一设置下比较。也就是说，选错只会让你"照着打的手感"对不上，不会让推荐值算错。<br>
+        · <b>不确定就选「黑边」</b>：它是失真最小的选项，也是绝大多数玩家的情形。
+      </p>
+    </details>
     <details>
       <summary>FOV 说明：范围与「数值含义」怎么选（点开查看）</summary>
       <p class="hint">
@@ -3488,6 +3503,11 @@ function estimateTime(){
   const worst = base + cfg.deepenHip*1.5 + (cfg.modelOn ? 1 : 0);
   return { base:Math.round(base), worst:Math.round(worst) };
 }
+/* 比例 → 可读标签（预览与 HUD 共用） */
+const ASPECT_LABEL = a =>
+  Math.abs(fin(a,16/9) - 16/9) < 1e-4 ? '16:9' :
+  (Math.abs(fin(a,16/9) - 1.6) < 1e-4 ? '16:10' :
+  (Math.abs(fin(a,16/9) - 4/3) < 1e-4 ? '4:3' : fin(a,16/9).toFixed(2) + ':1'));
 function updatePreview(){
   try{
     readCfgSoft(); syncFovInputLimits();
@@ -3504,8 +3524,23 @@ function updatePreview(){
         + (sc ? (' ≈ ' + sc.toFixed(2)) : '')
         + '（社区近似：1.00=70 / 1.27=90 / 1.55=110 / 1.70=120），请先在游戏内确认已生效。</span>';
     }
+    /* 显示模式的实时提示：选了「拉伸填满」而窗口比例又和所选比例不同时，
+       画面会被拉变形（圆靶变椭圆），提醒用户确认这正是他游戏里的样子。 */
+    let dispNote = '';
+    try{
+      const winAspect = (window.innerWidth || 16) / (window.innerHeight || 9);
+      const mismatch = Math.abs(winAspect - cfg.aspect) > 0.02;
+      if (cfg.display === 'stretch'){
+        dispNote = mismatch
+          ? `<br><span style="color:#ffb454">⚠ 显示模式「拉伸填满」：你的窗口比例约 ${winAspect.toFixed(2)}:1，而上面选的比例是 ${cfg.aspect.toFixed(2)}:1 —— 打靶画面会被拉变形（圆形靶变椭圆）。只有当你游戏里也是这样被拉伸时才这样选。</span>`
+          : `<br><span style="color:#8b9bb2">显示模式「拉伸填满」：当前窗口比例与所选比例一致，画面不会被拉变形。</span>`;
+      } else {
+        dispNote = `<br><span style="color:#8b9bb2">显示模式「黑边」：保持比例、四周留黑边，画面不变形（推荐）。</span>`;
+      }
+    }catch(e){}
     $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
-      · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}<br>
+      · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}
+      · ${ASPECT_LABEL(cfg.aspect)}${dispNote}<br>
       <b>预计有效瞄准时长 ≈ ${t.base} 分钟</b>（不含休息；含模型持续推算的份额）；最坏约 ${t.worst} 分钟。${warn}`;
   }catch(e){}
 }

@@ -254,7 +254,11 @@
           <option value="1.7777778" selected>16 : 9</option>
           <option value="1.6">16 : 10</option>
           <option value="1.3333333">4 : 3</option>
+          <option value="custom">自定义…</option>
         </select>
+      </label>
+      <label id="lblCustomAspect" class="hidden">填入比例
+        <input type="text" id="aspectCustom" placeholder="如 16:11 或 1.4545" style="min-width:150px">
       </label>
       <label>显示模式
         <select id="display">
@@ -3476,7 +3480,23 @@ function readCfgSoft(){
   const fl = fovLimits();
   cfg.fov = clamp(round1(cfg.fovRaw), fl.lo, fl.hi);
   cfg.fovClamped = Math.abs(cfg.fov - round1(cfg.fovRaw)) > 1e-9;
-  cfg.aspect = parseFloat($('aspect').value); cfg.display = $('display').value;
+  /* 分辨率比例：预设三档 + 「自定义」（16:11、21:9、16:12 这类非整数比走这里）。
+     自定义支持 "16:11"（冒号/斜杠/中文冒号均可）或直接写小数 1.4545 */
+  const aspSel = $('aspect').value;
+  if (aspSel === 'custom'){
+    const raw = String($('aspectCustom') ? $('aspectCustom').value : '').trim();
+    const m = raw.match(/^(\d+(?:\.\d+)?)\s*[:：/xX*]\s*(\d+(?:\.\d+)?)$/);
+    let a = NaN;
+    if (m){ const w = parseFloat(m[1]), h = parseFloat(m[2]); if (h > 0) a = w/h; }
+    else { a = parseFloat(raw.replace(',', '.')); }
+    cfg.aspect = (Number.isFinite(a) && a >= 1.0 && a <= 3.2) ? a : 16/9;
+    if (!(Number.isFinite(a) && a >= 1.0 && a <= 3.2)) cfg.aspectBad = raw;
+    else cfg.aspectBad = null;
+  } else {
+    cfg.aspect = parseFloat(aspSel) || 16/9;
+    cfg.aspectBad = null;
+  }
+  cfg.display = $('display').value;
   cfg.lenKey = $('rounds').value; cfg.sfx = $('sfx').checked;
   cfg.deepenHip = clamp(parseInt($('deepenHip').value)||3, 0, 10);
   cfg.anchorMode = $('anchorMode').value;
@@ -3503,14 +3523,29 @@ function estimateTime(){
   const worst = base + cfg.deepenHip*1.5 + (cfg.modelOn ? 1 : 0);
   return { base:Math.round(base), worst:Math.round(worst) };
 }
-/* 比例 → 可读标签（预览与 HUD 共用） */
-const ASPECT_LABEL = a =>
-  Math.abs(fin(a,16/9) - 16/9) < 1e-4 ? '16:9' :
-  (Math.abs(fin(a,16/9) - 1.6) < 1e-4 ? '16:10' :
-  (Math.abs(fin(a,16/9) - 4/3) < 1e-4 ? '4:3' : fin(a,16/9).toFixed(2) + ':1'));
+/* 比例 → 可读标签（预览与 HUD 共用）。非预设档尽量还原成 "16:11" 这种写法 */
+function ratioToLabel(a){
+  const x = fin(a, 16/9);
+  if (Math.abs(x - 16/9) < 1e-3) return '16:9';
+  if (Math.abs(x - 1.6)   < 1e-3) return '16:10';
+  if (Math.abs(x - 4/3)   < 1e-3) return '4:3';
+  if (Math.abs(x - 21/9)  < 1e-3) return '21:9';
+  /* 试着找一个"漂亮"的整数比：分母 9~16，误差 < 0.5% */
+  for (let h = 9; h <= 16; h++){
+    const w = Math.round(x * h);
+    if (w > 0 && Math.abs(w/h - x) < 0.005) return w + ':' + h;
+  }
+  return x.toFixed(3) + ':1';
+}
+const ASPECT_LABEL = ratioToLabel;
 function updatePreview(){
   try{
     readCfgSoft(); syncFovInputLimits();
+    /* 选了「自定义比例」才显示输入框 */
+    try{
+      const lbl = $('lblCustomAspect');
+      if (lbl) lbl.classList.toggle('hidden', $('aspect').value !== 'custom');
+    }catch(e){}
     const dpi = cfg.dpi;
     const sens = cfg.startSens || 1120/dpi;
     const t = estimateTime();
@@ -3538,9 +3573,13 @@ function updatePreview(){
         dispNote = `<br><span style="color:#8b9bb2">显示模式「黑边」：保持比例、四周留黑边，画面不变形（推荐）。</span>`;
       }
     }catch(e){}
+    /* 自定义比例填错时的提示（会回退到 16:9，必须让用户看见） */
+    if (cfg.aspectBad){
+      warn += `<br><span style="color:#ffb454">⚠ 自定义比例「${String(cfg.aspectBad).slice(0,24)}」无法识别，已按 16:9 处理。请填 <b>16:11</b> 这样的比例，或直接填小数 <b>1.4545</b>。</span>`;
+    }
     $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
       · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}
-      · ${ASPECT_LABEL(cfg.aspect)}${dispNote}<br>
+      · 分辨率比例 ${ASPECT_LABEL(cfg.aspect)}${dispNote}<br>
       <b>预计有效瞄准时长 ≈ ${t.base} 分钟</b>（不含休息；含模型持续推算的份额）；最坏约 ${t.worst} 分钟。${warn}`;
   }catch(e){}
 }
@@ -3609,7 +3648,7 @@ $('startBtn').onclick = async ()=>{
     if (eng.raw === 'unknown') warns0.push('⚠ 鼠标输入可能未启用未加速模式，结果可能受影响。');
     if (cfg.fov > 110) warns0.push('⚠ 按 FOV '+cfg.fov+' 测试（>110 需 cl_fovScale）：请确认游戏内已生效。');
     hudWarn.innerHTML = warns0.join('<br>');
-    const aspLabel = Math.abs(cfg.aspect-16/9)<1e-4 ? '16:9' : (Math.abs(cfg.aspect-1.6)<1e-4 ? '16:10' : '4:3');
+    const aspLabel = ASPECT_LABEL(cfg.aspect);
     hudHint.style.opacity = '1';
     hudHint.textContent = '空格 继续 · Esc 暂停 · R 重开本段'
       + ` · FOV ${cfg.fov} · ${aspLabel}${cfg.display==='stretch'?' 拉伸':' 黑边'}`;

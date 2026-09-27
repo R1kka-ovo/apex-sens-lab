@@ -300,7 +300,30 @@
   </div>
 
   <div class="box">
-    <h2>② 腰射测试</h2>
+    <h2>② 详细瞄准数据（可选 · 导出给 AI 分析）</h2>
+    <div class="field">
+      <label><input type="checkbox" id="teleOn"> 记录详细瞄准数据</label>
+      <label>采样率
+        <select id="teleHz">
+          <option value="10">10 Hz（省内存）</option>
+          <option value="20" selected>20 Hz（推荐）</option>
+          <option value="30">30 Hz（最细）</option>
+        </select>
+      </label>
+      <label>实测 DPI <input type="number" id="dpiMeasured" placeholder="留空=用上面填的值" min="100" max="6400" step="1"></label>
+    </div>
+    <p class="hint" id="teleHint" style="margin:6px 0 0">
+      勾选后，每一段会额外记录：<b>逐帧准星与目标角度</b>（含准星在目标运动前方/后方、是否来回修正）、
+      <b>每一次鼠标位移</b>（幅度分布：大幅拉枪 vs 微调、急停与反向修正次数）、
+      <b>每一次点击</b>（是否命中、准星离靶心多远、是否经过目标却没点）、
+      <b>目标运动事件</b>（出现/消失/变向/加速减速）、<b>输入与环境状态</b>（未加速是否生效、帧间隔、FOV、分辨率、DPI）。
+      这些数据只存在内存里，<b>不会上传</b>；测试结束后在<b>结论页</b>用「导出遥测报告 / 导出可读摘要」写出。
+      不勾选则完全不采集、零开销。
+    </p>
+  </div>
+
+  <div class="box">
+    <h2>③ 腰射测试</h2>
     <div class="field">
       <label>当前灵敏度 <input type="number" id="sens" placeholder="留空=按 eDPI 1120 估计" min="0.1" max="10" step="0.01"></label>
       <label>测试长度
@@ -321,7 +344,7 @@
   </div>
 
   <div class="box">
-    <h2>③ 高级选项</h2>
+    <h2>④ 高级选项</h2>
     <div class="field">
       <label><input type="checkbox" id="adaptiveDiff" checked> 自适应难度</label>
       <label><input type="checkbox" id="modelOn" checked> 瞄准数据建模提议候选（持续推算）</label>
@@ -405,16 +428,6 @@
     </details>
   </div>
 
-  <div class="box">
-    <h2>测试记录</h2>
-    <div class="row" style="margin-top:4px">
-      <button id="exportBtn" class="btn secondary">导出当前测试记录（.json）</button>
-    </div>
-    <p class="hint" style="margin:10px 0 0" id="exportHint">
-      测试结束后在结论页点「导出测试记录」保存本次结果；下次想接着测就从首页选「导入测试数据」。
-      导出的是纯文本 JSON（含逐段得分与对决记录），只在你本机保存，不含任何自动上传。</p>
-  </div>
-
   <div class="row"><button id="startBtn" class="btn">开始（全屏）</button>
     <button id="backBtn" class="btn secondary">返回 · 重新选择</button></div>
   <p class="hint" id="preview"></p>
@@ -449,6 +462,11 @@
   <details class="rvBlock"><summary>候选点明细</summary><div id="resCands"></div></details>
   <details class="rvBlock"><summary>方法与注意事项</summary><p class="hint" id="resNotes"></p></details>
 
+  <div class="cBlock rvBlock hidden" id="cbAimAnalysis">
+    <p class="chartTitle">⑤ 瞄准行为分析（来自详细瞄准数据）</p>
+    <div id="resAimAnalysis"></div>
+  </div>
+
   <h2 style="margin-top:26px" id="hFinal" class="rvBlock">结论</h2>
   <div id="resMain"></div>
 
@@ -457,8 +475,11 @@
     <button id="modelBtn" class="btn secondary">模型继续推算（挑战 +8 段）</button>
     <button id="copyBtn" class="btn secondary">复制结果摘要</button>
     <button id="exportBtn2" class="btn secondary">导出测试记录</button>
+    <button id="teleExportBtn" class="btn secondary hidden">导出遥测报告（.json）</button>
+    <button id="teleSummaryBtn" class="btn secondary hidden">导出遥测摘要（.md）</button>
     <button id="restartBtn" class="btn secondary">重新配置</button>
   </div>
+  <p class="hint" id="teleStat" style="margin:6px 0 0"></p>
   <p class="hint" id="refineMsg" style="margin:6px 0 0"></p>
 </section>
 
@@ -801,6 +822,440 @@ window.addEventListener('unhandledrejection', e=>{
   showFatal('异步错误：' + ((r && r.message) || r));
 });
 
+/* ============================ 3.5 瞄准遥测（可选，用于导出给 AI 分析） ============================
+   默认关闭；打开后每段会额外记录「逐帧准星/目标、原始鼠标输入、每次点击、目标运动事件」。
+   这些数据只存在内存里，随「导出遥测报告」写出，用于分析瞄准习惯。 */
+const tele = { on:false, hz:20, env:null, blocks:[], notes:{ fatigue:null, comfort:null, note:'' },
+               frameStats:{ n:0, sum:0, max:0, over33:0, last:0 } };
+/* 采集时钟：用 gTime（段内秒）而非墙钟，便于与目标事件对齐 */
+function teleReset(){
+  tele.blocks = [];
+  tele.frameStats = { n:0, sum:0, max:0, over33:0, last:0 };
+}
+/* 环境与输入状态：导出时用于排除「输入加速 / 卡顿 / 显示差异」造成的假象 */
+function teleEnv(){
+  const rd = s => { try{ return window.matchMedia(s).matches; }catch(e){ return null; } };
+  let dpr = 1, sw = 0, sh = 0;
+  try{ dpr = window.devicePixelRatio || 1; sw = screen.width; sh = screen.height; }catch(e){}
+  return {
+    at: new Date().toISOString(),
+    ua: (navigator && navigator.userAgent) || '',
+    platform: (navigator && navigator.platform) || '',
+    hardwareConcurrency: (navigator && navigator.hardwareConcurrency) || null,
+    devicePixelRatio: dpr,
+    screen: sw + 'x' + sh,
+    window: (window.innerWidth||0) + 'x' + (window.innerHeight||0),
+    reducedMotion: rd('(prefers-reduced-motion: reduce)'),
+    /* 输入侧：raw 是否拿到「未加速」、指针锁定是否成功 */
+    rawInput: eng.raw,                 /* 'yes' = 未加速成功；'unknown' = 可能被加速 */
+    pointerLocked: (typeof document !== 'undefined') && document.pointerLockElement === stageEl,
+    dpiSet: cfg.dpi, dpiMeasured: cfg.dpiMeasured || null,
+    fov: cfg.fov, fovBasis: cfg.fovBasis, aspect: cfg.aspect,
+    aspectActual: cfg.aspect, display: cfg.display,
+    sensAtStart: null,                 /* 每段各自记 */
+    anchorMode: cfg.anchorMode, modelOn: cfg.modelOn, adaptiveDiff: cfg.adaptiveDiff,
+    lenKey: cfg.lenKey, deepHip: cfg.deepenHip
+  };
+}
+/* 每段开始时调用：建立本段的采集容器 */
+function teleBeginBlock(B){
+  if (!tele.on) return;
+  B.tele = {
+    task:B.task, L:B.L, sens:B.sensEff, seed:B.seed,
+    startedAt: Math.round(sessionClock),
+    frames: [], mouse: [], clicks: [], events: [],
+    frameAcc: 0, lastSample: -1e9, targetSeen: new Set()
+  };
+}
+/* 每帧采样的节流：按 Hz 决定是否记录 */
+function teleSampleFrame(B, dt){
+  const t = B.tele; if (!t) return;
+  t.frameAcc += fin(dt,0);
+  const step = 1 / Math.max(1, tele.hz);
+  if (t.frameAcc - t.lastSample < step) return;
+  t.lastSample = t.frameAcc;
+  /* 取当前「正在打的那个靶」：点击类取最近的、切换类取当前靶、跟枪类即唯一移动靶 */
+  let tg = null, errTo = null;
+  if (B.targets && B.targets.length){
+    let best = null, bestA = Infinity;
+    for (const x of B.targets){
+      if (x.state === 'dying') continue;
+      if (B.task === 'switch' && !x.isCurrent) continue;
+      const a = angTo(x);
+      if (a < bestA){ bestA = a; best = x; }
+    }
+    tg = best;
+    if (tg) errTo = bestA;
+  }
+  const rec = { t: +gTime.toFixed(3), cy: +cam.yaw.toFixed(3), cp: +cam.pitch.toFixed(3) };
+  if (tg){
+    rec.ty = +tg.yaw.toFixed(3); rec.tp = +tg.pitch.toFixed(3);
+    rec.tr = +fin(tg.R,0).toFixed(3); rec.err = +fin(errTo,0).toFixed(3);
+    rec.ratio = +(fin(errTo,0) / Math.max(1e-6, fin(tg.R,1))).toFixed(3);   /* <1 表示在靶圈内 */
+    /* 准星在目标运动方向的前面还是后面：用目标本帧位移方向点乘（准星−目标） */
+    if (tg.prevYaw !== undefined && tg.prevPitch !== undefined){
+      const my = tg.yaw - tg.prevYaw, mp = tg.pitch - tg.prevPitch;
+      const sp = Math.hypot(my, mp);
+      if (sp > 1e-4){
+        const ax = cam.yaw - tg.yaw, ap = cam.pitch - tg.pitch;
+        rec.lead = +(((ax*my + ap*mp) / sp) / Math.max(1e-6, sp)).toFixed(3);
+      }
+    }
+  }
+  t.frames.push(rec);
+}
+/* 原始鼠标输入（每次事件） */
+function teleMouse(e){
+  const B = eng.block; const t = B && B.tele; if (!t) return;
+  if (eng.mode !== 'block') return;
+  const k = DEG_PER_COUNT * fin(B.sensEff,1);
+  t.mouse.push({ t:+gTime.toFixed(3),
+    x:Math.round(fin(e.movementX,0)), y:Math.round(fin(e.movementY,0)),
+    /* 这一笔输入造成的视角变化（度），便于直接统计"大幅/微调" */
+    dy:+(k*fin(e.movementX,0)).toFixed(3), dp:+(k*fin(e.movementY,0)).toFixed(3) });
+}
+/* 每次点击（含未命中） */
+function teleClick(hit, angErr, minAng, minR, targetIdx){
+  const B = eng.block; const t = B && B.tele; if (!t) return;
+  t.clicks.push({ t:+gTime.toFixed(3), hit:!!hit,
+    err: Number.isFinite(angErr) ? +angErr.toFixed(3) : null,
+    minErr: Number.isFinite(minAng) ? +minAng.toFixed(3) : null,
+    minErrRatio: (Number.isFinite(minAng) && Number.isFinite(minR) && minR>0) ? +(minAng/minR).toFixed(3) : null,
+    target: (typeof targetIdx === 'number' && targetIdx >= 0) ? targetIdx : null,
+    /* 开火瞬间准星相对目标中心的水平/垂直分量，供「是否提前开枪」判断 */
+    dx: t.frames.length ? +(cam.yaw - (B.targets[targetIdx] ? B.targets[targetIdx].yaw : cam.yaw)).toFixed(3) : null,
+    dyv: t.frames.length ? +(cam.pitch - (B.targets[targetIdx] ? B.targets[targetIdx].pitch : cam.pitch)).toFixed(3) : null });
+}
+/* 目标运动事件：出现 / 消失 / 变向 / 加速 减速 */
+function teleEvent(kind, target, extra){
+  const B = eng.block; const t = B && B.tele; if (!t) return;
+  const rec = { t:+gTime.toFixed(3), kind };
+  if (target){
+    rec.idx = B.targets.indexOf(target);
+    rec.yaw = +fin(target.yaw,0).toFixed(3);
+    rec.pitch = +fin(target.pitch,0).toFixed(3);
+    rec.R = +fin(target.R,0).toFixed(3);
+    rec.err = +angTo(target).toFixed(3);
+  }
+  if (extra) Object.assign(rec, extra);
+  t.events.push(rec);
+}
+
+/* 每段收尾：归档本段采集，并做一份段内派生汇总（给 AI 直接看的骨架） */
+function teleEndBlock(B, res){
+  const t = B && B.tele; if (!t) return;
+  B.tele = null;
+  /* ---- 派生汇总：把散点压成可直接解读的指标 ---- */
+  const fr = t.frames, ms = t.mouse, ck = t.clicks, ev = t.events;
+  const sum = {
+    frames: fr.length, mouseEvents: ms.length, clicks: ck.length, targetEvents: ev.length,
+    duration: +fin(B.elapsed,0).toFixed(2),
+    /* 准星-目标误差（度）：均值 / 中位 / 落在靶圈内的比例 */
+    errMean: fr.length ? +avg(fr.filter(f=>f.err!==undefined).map(f=>f.err)).toFixed(3) : null,
+    errP50: null, inTargetFrac: null,
+    /* 鼠标输入：单次位移幅度分布 —— 区分「大幅拉枪」与「微调」 */
+    moveMeanAbs: ms.length ? +avg(ms.map(m=>Math.hypot(m.x,m.y))).toFixed(2) : null,
+    moveP95Abs: null,
+    moveBigFrac: null,   /* 单次 > 40 计数 的比例（大幅移动） */
+    moveMicroFrac: null, /* 单次 ≤ 3 计数 的比例（微调） */
+    /* 急停 / 反向修正：一帧内位移方向翻转的比例 */
+    reversals: 0,
+    /* 目标运动事件计数 */
+    spawns: ev.filter(e=>e.kind==='spawn').length,
+    turnEvents: ev.filter(e=>e.kind==='turn').length,
+    headLeads: (fr.filter(f=>f.lead !== undefined && f.lead > 0).length),
+    headLags: (fr.filter(f=>f.lead !== undefined && f.lead < 0).length),
+    /* 业务结果（与 stats 对齐，便于交叉核对） */
+    score: res ? +fin(res.score,0).toFixed(2) : null,
+    hitRate: res && res.stats ? res.stats.hitRate : null,
+    skipped: !!(res && res.skipped)
+  };
+  const errs = fr.filter(f=>f.err!==undefined).map(f=>f.err).sort((a,b)=>a-b);
+  if (errs.length){ sum.errP50 = +errs[Math.floor(errs.length/2)].toFixed(3); }
+  const inT = fr.filter(f=>f.ratio !== undefined && f.ratio <= 1).length;
+  const withT = fr.filter(f=>f.ratio !== undefined).length;
+  if (withT) sum.inTargetFrac = +(inT/withT).toFixed(3);
+  const mags = ms.map(m=>Math.hypot(m.x,m.y)).sort((a,b)=>a-b);
+  if (mags.length){
+    sum.moveP95Abs = +mags[Math.min(mags.length-1, Math.floor(mags.length*0.95))].toFixed(2);
+    sum.moveBigFrac  = +(mags.filter(v=>v>40).length/mags.length).toFixed(3);
+    sum.moveMicroFrac= +(mags.filter(v=>v<=3).length/mags.length).toFixed(3);
+  }
+  let rev = 0;
+  for (let i=1;i<ms.length;i++){
+    const a = ms[i-1], b = ms[i];
+    /* 水平方向在一次输入内就反向：算一次「反向修正」 */
+    if (a.x !== 0 && b.x !== 0 && Math.sign(a.x) !== Math.sign(b.x) && (Math.abs(a.x)+Math.abs(b.x)) > 8) rev++;
+  }
+  sum.reversals = rev;
+  t.summary = sum;                       /* ← 派生汇总必须挂回段上，报告与摘要都读它 */
+  /* 段顺序与阶段：运行到这里的段已经拿到 label */
+  t.order = { seg: fin(B.seg !== undefined ? B.seg : (res && res.seg), 0),
+              stage: res && res.stage ? res.stage : null,
+              label: res && res.label ? res.label : null,
+              atSessionSecond: Math.round(sessionClock) };
+  delete t.targetSeen;
+  tele.blocks.push(t);
+}
+
+/* ============================ 3.6 遥测报告：导出 + 可读摘要 ============================ */
+/* 把 tele.blocks 汇总成一份「给 AI 看」的报告：既有原始逐帧数据，也有派生指标与事件表 */
+function teleBuildReport(){
+  const blocks = tele.blocks.filter(b => b && (b.frames.length || b.mouse.length || b.clicks.length));
+  const env = tele.env || teleEnv();
+  /* 全局汇总：跨段统计，便于看「整体习惯」 */
+  const allMouse = [], allFrames = [], allClicks = [];
+  for (const b of blocks){ allMouse.push(...b.mouse); allFrames.push(...b.frames); allClicks.push(...b.clicks); }
+  const mags = allMouse.map(m=>Math.hypot(m.x,m.y));
+  const overAll = allMouse.filter(m=>Math.hypot(m.x,m.y) > 40).length;
+  const microAll = allMouse.filter(m=>Math.hypot(m.x,m.y) <= 3).length;
+  const globalSum = {
+    blocks: blocks.length,
+    frames: allFrames.length, mouseEvents: allMouse.length, clicks: allClicks.length,
+    clicksHit: allClicks.filter(c=>c.hit).length,
+    mouseMeanAbs: mags.length ? +avg(mags).toFixed(2) : null,
+    mouseBigFrac: mags.length ? +(overAll/mags.length).toFixed(3) : null,
+    mouseMicroFrac: mags.length ? +(microAll/mags.length).toFixed(3) : null,
+    frameStats: {
+      samples: tele.frameStats.n,
+      meanMs: tele.frameStats.n ? +(tele.frameStats.sum/tele.frameStats.n).toFixed(2) : null,
+      maxMs: tele.frameStats.n ? +tele.frameStats.max.toFixed(1) : null,
+      over33ms: tele.frameStats.over33
+    }
+  };
+  return {
+    schema: 1, app: 'apex-sens-lab-telemetry', exportedAt: new Date().toISOString(),
+    /* 给 AI 的解读提示：明确口径，避免误读 */
+    readme: [
+      '角度单位：度。cy/cp = 准星 yaw/pitch，ty/tp = 目标 yaw/pitch，tr = 目标半径（度）。',
+      'err = 准星到靶心的角距离；ratio = err/tr，≤1 表示准星在靶圈内。',
+      'lead > 0 表示准星在目标运动方向的前方（提前量），< 0 表示落在目标后面（追不上）。',
+      'mouse.x/y = 单次原始位移（计数）；dy/dp = 该次输入造成的视角变化（度）。计数→角度 = 0.022 × sens。',
+      'clicks[].minErrRatio 为未命中时「最接近靶心的距离 / 该靶半径」，可用来判断是不是擦边。',
+      'events[].kind：spawn=目标出现，vanish-hit=命中消失，vanish-timeout=超时消失，turn=变向，speed=加速/减速。',
+      '注意：sens 是「游戏内灵敏度」，不是 cm/360；同一会话内不同段的 sens 不同，比较行为时请先看 sens 列。'
+    ],
+    env, globalSummary: globalSum,
+    subjective: tele.notes,
+    sensPlan: (tracks && tracks.hip) ? {
+      rec: tracks.hip.rec, interval: tracks.hip.interval, verdict: tracks.hip.verdict,
+      deepenCount: tracks.hip.deepenCount, pool: tracks.hip.pool.map(c=>({ v:c.v, blocks:c.blocks.length, elo:Math.round(c.elo) }))
+    } : null,
+    blocks
+  };
+}
+/* 可读摘要（Markdown）：给不看 JSON 的人，也给 AI 一个先读的骨架 */
+function teleBuildSummaryMd(){
+  const R = teleBuildReport();
+  const L = [];
+  const n = v => (v===null||v===undefined||!Number.isFinite(v)) ? '—' : (typeof v === 'number' ? String(+v.toFixed(2)) : String(v));
+  L.push('# 瞄准遥测摘要');
+  L.push('');
+  L.push('- 导出时间：' + R.exportedAt);
+  L.push('- 段数：' + R.globalSummary.blocks + ' · 逐帧样本 ' + R.globalSummary.frames +
+         ' · 鼠标事件 ' + R.globalSummary.mouseEvents + ' · 点击 ' + R.globalSummary.clicks +
+         '（命中 ' + R.globalSummary.clicksHit + '）');
+  L.push('- 鼠标幅度：均值 ' + n(R.globalSummary.mouseMeanAbs) + ' 计数 · 大幅(>40)占比 ' +
+         n(R.globalSummary.mouseBigFrac) + ' · 微调(≤3)占比 ' + n(R.globalSummary.mouseMicroFrac));
+  const fs = R.globalSummary.frameStats;
+  L.push('- 帧间隔：均值 ' + n(fs.meanMs) + ' ms · 最大 ' + n(fs.maxMs) + ' ms · >33ms 帧数 ' + fs.over33ms);
+  if (R.subjective && (R.subjective.fatigue || R.subjective.comfort || R.subjective.note)){
+    L.push('- 主观：疲劳 ' + n(R.subjective.fatigue) + '/5 · 舒适 ' + n(R.subjective.comfort) + '/5' +
+           (R.subjective.note ? (' · 备注：' + String(R.subjective.note).slice(0,120)) : ''));
+  }
+  L.push('');
+  L.push('## 环境与输入状态（用于排除假象）');
+  L.push('');
+  L.push('| 项 | 值 |');
+  L.push('|---|---|');
+  const e = R.env;
+  L.push('| 未加速指针锁定 | ' + (e.rawInput === 'yes' ? '成功' : (e.rawInput === 'unknown' ? '⚠ 可能被加速' : '未知')) + ' |');
+  L.push('| 浏览器 | ' + String(e.ua).slice(0, 90) + ' |');
+  L.push('| 分辨率 / DPR | ' + e.screen + ' · ' + e.window + ' · DPR ' + n(e.devicePixelRatio) + ' |');
+  L.push('| FOV / 基准 | ' + n(e.fov) + ' / ' + e.fovBasis + ' |');
+  L.push('| DPI（填写 / 实测） | ' + n(e.dpiSet) + ' / ' + n(e.dpiMeasured) + ' |');
+  L.push('');
+  L.push('## 逐段');
+  L.push('');
+  L.push('| # | 任务 | Lv | 灵敏度 | 段内秒 | 帧 | 鼠标 | 点击 | err均值 | err中位 | 靶内占比 | 大幅占比 | 微调占比 | 反向修正 | 提前/落后 | 变向 | 得分 |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  R.blocks.forEach((b, i)=>{
+    const s = b.summary;
+    L.push('| ' + (i+1) + ' | ' + (TASK_NAME[b.task]||b.task) + ' | ' + b.L + ' | ' + n(b.sens) + ' | ' +
+      n(b.summary.duration) + ' | ' + s.frames + ' | ' + s.mouseEvents + ' | ' + s.clicks + ' | ' +
+      n(s.errMean) + ' | ' + n(s.errP50) + ' | ' + n(s.inTargetFrac) + ' | ' + n(s.moveBigFrac) + ' | ' +
+      n(s.moveMicroFrac) + ' | ' + s.reversals + ' | ' + s.headLeads + '/' + s.headLags + ' | ' +
+      s.turnEvents + ' | ' + n(s.score) + ' |');
+  });
+  L.push('');
+  L.push('## 怎么读这份数据（可直接连同 JSON 一起交给 AI）');
+  L.push('');
+  L.push('1. **大幅 vs 微调的比例**：`mouseBigFrac` 高说明以甩枪为主，`mouseMicroFrac` 高说明以微调为主；');
+  L.push('   两者衔接不顺的典型表现是「大幅移动后紧跟一串极小修正」——可看 mouse 事件的幅度序列。');
+  L.push('2. **急停与反向修正**：`reversals` 是相邻两次水平输入反向的次数（且总幅度 > 8 计数）。次数偏高 = 过冲后反复拉回。');
+  L.push('3. **提前量**：`headLeads` / `headLags` 是逐帧里准星在目标运动前方/后方的帧数；落后多说明跟枪「追不上的方向」是主要短板。');
+  L.push('4. **点击习惯**：`clicks[].minErrRatio` 接近 1 说明常擦边；再看 `vanish-timeout` 事件与邻近点击的时间差，判断是否「经过目标却没点」。');
+  L.push('5. **反应延迟**：拿 `spawn` 事件时间与随后第一帧 `err < tr` 的时间差，就是该次的到位耗时；`turn` 事件后的同样差值反映变向后重新跟上的速度。');
+  L.push('6. **排除假象**：先看环境表——`未加速` 未成功、帧间隔有 >33ms 的尖峰，都会系统性压低成绩，解读行为前先确认这些。');
+  L.push('');
+  L.push('> 完整逐帧/逐输入原始数据在导出的 JSON 里（`blocks[].frames` / `.mouse` / `.clicks` / `.events`）。');
+  return L.join('\n');
+}
+function teleExportReport(){
+  if (!tele.blocks.length){ alert('还没有采集到数据。请先勾选「记录详细瞄准数据」并完成至少一段测试。'); return; }
+  const R = teleBuildReport();
+  saveTextFile('apex-aim-telemetry-' + nowStamp() + '.json', JSON.stringify(R));
+}
+function teleExportSummary(){
+  if (!tele.blocks.length){ alert('还没有采集到数据。请先勾选「记录详细瞄准数据」并完成至少一段测试。'); return; }
+  saveTextFile('apex-aim-summary-' + nowStamp() + '.md', teleBuildSummaryMd());
+}
+/* 采集开关与状态显示 */
+function teleSyncCfg(){
+  tele.on = !!($('teleOn') && $('teleOn').checked);
+  tele.hz = clamp(parseInt($('teleHz') ? $('teleHz').value : 20) || 20, 5, 60);
+  try{ cfg.dpiMeasured = $('dpiMeasured') && $('dpiMeasured').value !== '' ? clamp(parseInt($('dpiMeasured').value)||0,100,6400) : null; }catch(e){ cfg.dpiMeasured = null; }
+  if (tele.on && !tele.env) tele.env = teleEnv();
+  teleUpdateStat();
+}
+function teleUpdateStat(){
+  const el = $('teleStat');
+  const n = tele.blocks.length;
+  const frames = tele.blocks.reduce((s,b)=>s + (b.frames ? b.frames.length : 0), 0);
+  const clicks = tele.blocks.reduce((s,b)=>s + (b.clicks ? b.clicks.length : 0), 0);
+  const hasData = n > 0;
+  /* 导出按钮只在确实有数据时才出现（结论页上）；没数据时不摆一个点了没反应的按钮 */
+  ['teleExportBtn','teleSummaryBtn'].forEach(id=>{
+    const b = $(id); if (b) b.classList.toggle('hidden', !hasData);
+  });
+  if (!el) return;
+  if (!tele.on){ el.textContent = ''; return; }
+  el.textContent = hasData
+    ? ('详细瞄准数据：已记录 ' + n + ' 段 · 逐帧 ' + frames + ' · 点击 ' + clicks)
+    : '详细瞄准数据：已开启记录，本次还没有采集到内容。';
+}
+
+/* 把跨段遥测压成「瞄准习惯」指标：结算页直接展示，也能一眼看出短板 */
+function teleAggregate(){
+  const blocks = tele.blocks.filter(b => b && b.frames && b.frames.length);
+  if (!blocks.length) return null;
+  const med = a => { if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; };
+  const frames = [], mouse = [], clicks = [], events = [];
+  for (const b of blocks){ frames.push(...b.frames); mouse.push(...b.mouse); clicks.push(...b.clicks); events.push(...b.events); }
+  /* 逐帧误差 */
+  const errs = frames.filter(f=>Number.isFinite(f.err)).map(f=>f.err);
+  const ratios = frames.filter(f=>Number.isFinite(f.ratio)).map(f=>f.ratio);
+  /* 鼠标幅度 */
+  const mags = mouse.map(m=>Math.hypot(fin(m.x,0), fin(m.y,0)));
+  /* 反向修正：相邻两次水平输入反向且总幅度 > 8 计数 */
+  let rev = 0;
+  for (let i=1;i<mouse.length;i++){
+    const a = mouse[i-1], b = mouse[i];
+    if ((a.x||0) !== 0 && (b.x||0) !== 0 && Math.sign(a.x) !== Math.sign(b.x) && (Math.abs(a.x)+Math.abs(b.x)) > 8) rev++;
+  }
+  /* 领先/落后（只在目标确有运动时统计） */
+  const leads = frames.filter(f=>Number.isFinite(f.lead));
+  const ahead = leads.filter(f=>f.lead > 0).length;
+  /* 反应延迟：从「目标出现 / 变向」到准星首次进入靶圈的时间 */
+  const lags = [], turnLags = [];
+  for (const b of blocks){
+    if (!b.frames || !b.frames.length) continue;
+    for (const ev of (b.events||[])){
+      if (ev.kind !== 'spawn' && ev.kind !== 'turn') continue;
+      const hit = b.frames.find(f => f.t >= ev.t && Number.isFinite(f.ratio) && f.ratio <= 1);
+      if (!hit) continue;
+      const d = +(hit.t - ev.t).toFixed(3);
+      if (d >= 0 && d <= 3){ (ev.kind === 'spawn' ? lags : turnLags).push(d); }
+    }
+  }
+  const hits = clicks.filter(c=>c.hit).length;
+  return {
+    blocks: blocks.length, frames: frames.length, mouseEvents: mouse.length, clicks: clicks.length,
+    clicksHit: hits, hitRate: clicks.length ? hits/clicks.length : null,
+    /* 跟枪覆盖：逐帧里准星在靶圈内的比例 */
+    inTargetFrac: ratios.length ? ratios.filter(r=>r<=1).length/ratios.length : null,
+    /* 精度 */
+    errMean: errs.length ? avg(errs) : null,
+    errP50: med(errs),
+    /* 大幅 vs 微调 */
+    moveMeanAbs: mags.length ? avg(mags) : null,
+    moveBigFrac: mags.length ? mags.filter(v=>v>40).length/mags.length : null,
+    moveMicroFrac: mags.length ? mags.filter(v=>v<=3).length/mags.length : null,
+    /* 过冲后反复拉回 */
+    reversals: rev,
+    reversalsPerMin: null,   /* 下面用总时长算 */
+    /* 提前量 */
+    leadFrac: leads.length ? ahead/leads.length : null,
+    leadSamples: leads.length,
+    /* 反应 */
+    reactMedian: med(lags), reactN: lags.length,
+    turnReactMedian: med(turnLags), turnReactN: turnLags.length,
+    turnEvents: events.filter(e=>e.kind==='turn').length,
+    spawns: events.filter(e=>e.kind==='spawn').length,
+    timeouts: events.filter(e=>e.kind==='vanish-timeout').length,
+    totalSeconds: blocks.reduce((s,b)=>s + fin(b.summary && b.summary.duration, 0), 0)
+  };
+}
+function aimAnalysisHTML(){
+  const A = teleAggregate();
+  if (!A) return '';
+  if (A.totalSeconds > 0) A.reversalsPerMin = A.reversals / (A.totalSeconds/60);
+  const pct = v => (v===null||!Number.isFinite(v)) ? '—' : (v*100).toFixed(0) + '%';
+  const n1 = v => (v===null||!Number.isFinite(v)) ? '—' : (+v).toFixed(1);
+  const n2 = v => (v===null||!Number.isFinite(v)) ? '—' : (+v).toFixed(2);
+  const sec = v => (v===null||!Number.isFinite(v)) ? '—' : (+v).toFixed(2) + ' s';
+  const notes = [];
+  if (A.inTargetFrac !== null) notes.push(A.inTargetFrac >= 0.6
+    ? '跟枪覆盖 <b>' + pct(A.inTargetFrac) + '</b> 的帧数准星在靶圈内——覆盖不错，重点看稳定度。'
+    : '跟枪覆盖只有 <b>' + pct(A.inTargetFrac) + '</b>：准星有较大比例时间在靶圈外，先练"跟上"再练"稳住"。');
+  if (A.leadFrac !== null && A.leadSamples > 20) notes.push(A.leadFrac >= 0.5
+    ? '运动方向上准星有 <b>' + pct(A.leadFrac) + '</b> 的时间处在目标前方——提前量偏主动（可能抢靶，注意别过冲）。'
+    : '只有 <b>' + pct(A.leadFrac) + '</b> 的时间在目标前方——多数时候在"追"目标，可尝试预判变向。');
+  if (A.reversalsPerMin !== null) notes.push(A.reversalsPerMin > 60
+    ? '反向修正 <b>' + A.reversalsPerMin.toFixed(0) + ' 次/分钟</b> 偏高：典型过冲后反复拉回，建议降低灵敏度或缩短单次移动。'
+    : '反向修正 <b>' + A.reversalsPerMin.toFixed(0) + ' 次/分钟</b>，属于可控范围。');
+  if (A.moveBigFrac !== null && A.moveMicroFrac !== null) notes.push(A.moveBigFrac >= 0.25
+    ? '大幅移动占比 <b>' + pct(A.moveBigFrac) + '</b>、微调 <b>' + pct(A.moveMicroFrac) + '</b>：以甩枪为主，注意甩到位后的收尾。'
+    : '大幅移动占比 <b>' + pct(A.moveBigFrac) + '</b>、微调 <b>' + pct(A.moveMicroFrac) + '</b>：以微调为主，可留意转身/大范围转移是否够快。');
+  if (A.turnReactMedian !== null) notes.push('目标变向后重新进入靶圈的中位耗时 <b>' + sec(A.turnReactMedian) + '</b>（' + A.turnReactN + ' 次样本）。');
+  if (A.reactMedian !== null) notes.push('目标出现后首次进入靶圈的中位耗时 <b>' + sec(A.reactMedian) + '</b>（' + A.reactN + ' 次样本）。');
+  const row = (k, v, extra) => `<tr><td>${k}</td><td>${v}</td><td class="hint">${extra||''}</td></tr>`;
+  const L = [];
+  L.push('<div class="dimrow">本次记录了 <b>' + A.blocks + '</b> 段 · 逐帧样本 <b>' + A.frames +
+         '</b> · 鼠标事件 <b>' + A.mouseEvents + '</b> · 点击 <b>' + A.clicks + '</b>（命中 ' + A.clicksHit + '）</div>');
+  L.push('<table>');
+  L.push('<tr><th>指标</th><th>读数</th><th>怎么读</th></tr>');
+  L.push(row('跟枪覆盖（准星在靶圈内）', pct(A.inTargetFrac), '跟枪类段里准星落在靶圈内的帧数占比，越高说明"跟上"得越好'));
+  L.push(row('准星误差 均值 / 中位', n2(A.errMean) + '° / ' + n2(A.errP50) + '°', '准星到靶心的角距离（度）；中位比均值更抗离群值'));
+  L.push(row('点击命中率', pct(A.hitRate), '点击类段的命中比例（含超时未点击）'));
+  L.push(row('鼠标幅度 均值 / 大幅 / 微调', n1(A.moveMeanAbs) + ' 计数 · ' + pct(A.moveBigFrac) + ' · ' + pct(A.moveMicroFrac),
+            '大幅 = 单次 >40 计数；微调 = 单次 ≤3 计数。两者比例反映你的操作结构'));
+  L.push(row('反向修正', (A.reversalsPerMin!==null? A.reversalsPerMin.toFixed(0)+' 次/分钟':'') + '（共 ' + A.reversals + ' 次）',
+            '相邻水平输入方向翻转且总幅度 >8 计数的次数——过冲后反复拉回的信号'));
+  L.push(row('提前量（准星在目标前方）', pct(A.leadFrac) + '（' + A.leadSamples + ' 帧样本）',
+            '只在目标确有运动的帧上统计；偏主动说明有预判，偏低说明多在追目标'));
+  L.push(row('目标出现 → 进圈 中位耗时', sec(A.reactMedian) + '（' + A.reactN + '）', '从目标出现到准星首次进入靶圈'));
+  L.push(row('目标变向 → 进圈 中位耗时', sec(A.turnReactMedian) + '（' + A.turnReactN + '）', '变向后重新跟上的速度，是跟枪的核心指标'));
+  L.push(row('目标运动事件', '出现 ' + A.spawns + ' · 变向 ' + A.turnEvents + ' · 超时消失 ' + A.timeouts, '超时消失多说明该打的目标没在时限内处理掉'));
+  L.push('</table>');
+  if (notes.length){
+    L.push('<div class="hint" style="margin-top:10px"><b>从这组读数能看出的习惯：</b><br>· ' + notes.join('<br>· ') + '</div>');
+  }
+  L.push('<div class="hint" style="margin-top:8px">想要逐帧/逐次输入的原始数据（可交给 AI 深入分析），用上面的「导出遥测报告」按钮。</div>');
+  return L.join('');
+}
+function renderAimAnalysis(){
+  const host = $('resAimAnalysis');
+  const wrap = $('cbAimAnalysis');
+  if (!host) return;
+  let has = false;
+  try{ has = !!teleAggregate(); }catch(e){ has = false; }
+  if (wrap) wrap.classList.toggle('hidden', !has);
+  if (!has) { host.innerHTML = ''; return; }
+  try{ host.innerHTML = aimAnalysisHTML(); }
+  catch(e){ host.innerHTML = '<div class="hint">行为分析渲染失败：' + ((e&&e.message)||e) + '</div>'; }
+}
+
 /* ============================ 4. FOV ============================ */
 const cm360 = (dpi,sens)=> 360*2.54/(DEG_PER_COUNT*dpi*sens);
 const sensForCm = (cm,dpi)=> 360*2.54/(DEG_PER_COUNT*dpi*cm);
@@ -929,6 +1384,7 @@ function onMove(e){
   cam.pitch = clamp(cam.pitch - dp, -85, 85);
   frameD.yaw += dy; frameD.pitch -= dp;
   eng.block.pathAccum += Math.hypot(dy, dp);
+  try{ teleMouse(e); }catch(err){}
 }
 function uiLocked(){ return eng.session || !stageEl.classList.contains('hidden'); }
 function blockNonLeft(e){
@@ -1295,7 +1751,10 @@ function updateTargets(dt){
     if (t.state === 'dying'){
       const k = (gTime - fin(t.dieAt,gTime))/0.28;
       t.alpha = clamp01(1-k);
-      if (k >= 1){ B.targets.splice(i,1); continue; }
+      if (k >= 1){
+        try{ teleEvent(t.wasHit ? 'vanish-hit' : 'vanish-timeout', t, { life:+(gTime - fin(t.activeAt||t.spawnAt,gTime)).toFixed(3) }); }catch(e){}
+        B.targets.splice(i,1); continue;
+      }
     }
     if (t.state === 'spawn'){
       const k = (gTime - t.spawnAt)/0.32;
@@ -1303,6 +1762,7 @@ function updateTargets(dt){
       if (k >= 1){
         t.state = 'active';
         if (isTrackTask(B.task)){ t.activeAt = gTime; t.prevYaw=t.yaw; t.prevPitch=t.pitch; }
+        try{ if (t.teleSpawned !== true){ t.teleSpawned = true; teleEvent('spawn', t, { fromState:'spawn' }); } }catch(e){}
       }
     }
     const since = gTime - t.spawnAt;
@@ -1383,8 +1843,11 @@ function fire(){
   if (isTrackTask(B.task)) return;
   B.shots++;
   const res = findHitTargetEx();
-  if (res.t) hitTarget(res.t, res.a);
-  else {
+  if (res.t) {
+    try{ teleClick(true, res.a, res.a, res.t.R, B.targets.indexOf(res.t)); }catch(e){}
+    hitTarget(res.t, res.a);
+  } else {
+    try{ teleClick(false, null, res.minA, res.minR, -1); }catch(e){}
     B.missShots++;
     if (res.minA !== null){
       B.missAngSum += res.minA; B.missAngN++;
@@ -1413,6 +1876,7 @@ function hitTarget(t, a){
   B.trials.push({ hit:true, tt, D0:t.D0, overRatio, pathEff, reversals:t.reversals, cent, s });
   B.hits++; B.trialsDone++;
   addHitFx(t); sfx('hit');
+  t.wasHit = true;
   t.state = 'dying'; t.dieAt = gTime;
   if (B.task === 'switch'){
     t.isCurrent = false;
@@ -1426,6 +1890,7 @@ function recordMiss(t){
   B.trials.push({ hit:false, tt:B.p.timeout, D0:t.D0||0, overRatio:0, pathEff:0,
                   reversals:t.reversals||0, cent:1, s:0 });
   sfx('miss');
+  t.wasHit = false;
   t.state = 'dying'; t.dieAt = gTime; B.trialsDone++;
 }
 
@@ -1456,6 +1921,7 @@ function runBlock(spec){
       fireOn:0, fireAll:0, shotN:0, shotOn:0, onTarget:false, lastTick:-9, fbSign:1,
       trials:[], samples:[], pathAccum:0, targets:[], resolve };
     eng.block = B; effects.length = 0; eng.mode = 'block';
+    try{ teleBeginBlock(B); }catch(e){}
     layout();
     if (B.task === 'track'){ B.path = buildTrackPath(p, B.seed); spawnTrackTarget(); }
     else if (B.task === 'strafe' || B.task === 'turn'){ spawnMover(B.task); }
@@ -1544,6 +2010,8 @@ function finalizeBlock(){
   }
   const res = { score, stats, sensEff:B.sensEff, task:B.task, L:B.L,
                 elapsed: fin(B.elapsed,0), skipped:!!B.skippedRun };
+  /* 遥测：本段收尾后归档，并从 eng.block 上摘掉（否则会被当成下一段的数据） */
+  try{ teleEndBlock(B, res); }catch(e){}
   const done = B.resolve;
   eng.block = null; eng.mode = 'wait';
   done && done(res);
@@ -2479,6 +2947,9 @@ async function finishAll(aborted){
   /* 结果页是独立一页：切过去时会把选择页 / 配置页 / 导入页一起隐藏，并把测试画面收起 */
   showPage('results');
   try{ window.scrollTo(0,0); }catch(e){}
+  /* 测试结束：把遥测导出按钮按「本次是否真的采到数据」显示出来，并在结算页直接给出行为分析 */
+  try{ teleUpdateStat(); }catch(e){}
+  try{ renderAimAnalysis(); }catch(e){}
   try{ renderResults(aborted); }
   catch(e){
     /* 出错也要保证结果页可见：揭晓动画走不到就会让整页停在 opacity:0，
@@ -2866,6 +3337,8 @@ function renderResults(aborted){
   runners.forEach(r=>push(r.el, r.wait, r.run, r.el, 560));
   push($('hDetail'), 260, null, $('hDetail'), 520);
   document.querySelectorAll('#results details').forEach(d=>push(d, 140));
+  /* 行为分析块（⑤）排在详细数据之后、结论之前——和它在页面上的位置一致 */
+  push($('cbAimAnalysis'), 300, null, $('cbAimAnalysis'), 520);
   push($('hFinal'), 320, null, $('resMain'), 620);
   if (hasHip){
     const rn = $('recNum');
@@ -3098,8 +3571,7 @@ function snapStat(label, value, wide){
   return `<div class="snapStat${wide?' wide':''}"><span>${label}</span><b>${value}</b></div>`;
 }
 function snapCardHTML(s){
-  if (!s) return `<p class="hint" style="margin:2px 0 0">还没有导入测试记录。点上面的「导出当前测试记录」保存本次结果，
-    或选择之前导出的 .json 文件导入，继续在历史数据上测量。</p>`;
+  if (!s) return `<p class="hint" style="margin:2px 0 0">还没有导入测试记录。选择之前测完后在<b>结论页</b>导出的 .json 文件即可导入，继续在历史数据上测量。</p>`;
   const t = s.track || {};
   const d = s.meta || {};
   const v = x=> (x===null||x===undefined||!Number.isFinite(fin(x,NaN))) ? '—' : fin(x,0).toFixed(2);
@@ -3636,6 +4108,7 @@ $('startBtn').onclick = async ()=>{
     SESSION_SALT = (Math.random()*2147483647)|0;
     restEverySec = cfg.restEvery > 0 ? cfg.restEvery*60 : 0;
     resetSessionClock(0);
+    teleSyncCfg(); teleReset();          /* 新一轮：清空上一轮遥测 */
     tracks = { hip: newTrack(baseSens, 0.20) };
     undoSnap = null; importedSnap = null; refreshImportUI();
     eng.restartBlock=false;
@@ -3692,9 +4165,15 @@ $('copyBtn').onclick = ()=>{
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t));
   else fallbackCopy(t);
 };
-/* —— 导出（两个页面上的导出按钮都指向同一实现） —— */
-$('exportBtn').onclick = exportSnapshot;
+/* —— 导出测试记录：只在结论页有按钮（准备界面没有数据，不摆无用的导出入口） —— */
 $('exportBtn2').onclick = exportSnapshot;
+/* —— 遥测：开关 / 导出 —— */
+$('teleExportBtn').onclick = teleExportReport;
+$('teleSummaryBtn').onclick = teleExportSummary;
+$('teleOn').onchange = ()=>{ teleSyncCfg(); if (tele.on && !tele.env) tele.env = teleEnv(); };
+$('teleHz').onchange = teleSyncCfg;
+$('dpiMeasured').oninput = teleSyncCfg;
+teleSyncCfg();
 $('restartBtn').onclick = ()=>location.reload();
 $('deepenBtn').onclick = async ()=>{
   const target = pickDeepenTarget();
@@ -3828,6 +4307,13 @@ function loop(now){
   if (eng.mode === 'block' && eng.block){
     gTime += dt;
     try{ sanitize(); stepBlock(dt); }catch(e){ frameError(e); }
+    try{ teleSampleFrame(eng.block, dt); }catch(e){}
+    /* 帧间隔统计：用于识别卡顿（卡顿会污染成绩，导出时据此排除假象） */
+    try{
+      const f = tele.frameStats;
+      if (f.last){ const d = (now - f.last); f.n++; f.sum += d; if (d > f.max) f.max = d; if (d > 33) f.over33++; }
+      f.last = now;
+    }catch(e){}
   }
   frameD.yaw = 0; frameD.pitch = 0;
   try{ render(); }catch(e){ frameError(e); }

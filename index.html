@@ -2776,22 +2776,50 @@ async function runDuel(spec){
     ${labelOf(B)} 各段（校正后）：${sB.map(v=>v.toFixed(1)).join(' / ')}　原始：${sBRaw.map(v=>v.toFixed(1)).join(' / ')}</div>`);
   chk();
 }
+/* 一段是否还有区分力。难度过高时两个候选都会打到地板，
+   此时「谁高一点」主要由脚本运气决定，而不是灵敏度好坏 —— 这种段落计入配对统计
+   只会增加方差、不会增加信息，所以必须识别出来并排除。 */
+const SAT_FLOOR = 25;
+function blockDiscriminates(blk){
+  if (!blk) return false;
+  const s = blk.stats || {};
+  const trials = fin(s.trials, 0) || fin(s.trialsDone, 0);
+  /* 跟枪段：覆盖与开火占比都极低 → 基本没跟上 */
+  if (fin(s.samples,0) > 0){
+    const close = fin(s.meanClose, NaN), fire = fin(s.fireCov, NaN);
+    if (Number.isFinite(close) && Number.isFinite(fire) && close < 0.12 && fire < 0.35) return false;
+  }
+  /* 点击段：命中数与点击准确率同时贴近 0 → 基本没打中 */
+  if (trials > 0 && fin(s.hits,0) === 0 && fin(s.clickAcc,0) < 0.2) return false;
+  /* 兜底：分数已经在地板上 */
+  if (fin(blk.score, 0) < SAT_FLOOR && trials > 0 && fin(s.hits,0) <= 0) return false;
+  return true;
+}
 function pairDiffStats(tr){
   let pair = tr.finalPair; if (!pair) return null;
   const D = [];
+  let skipped = 0;
   for (const d of tr.duelLog){
     if (!(d.main || d.deepen)) continue;
     if (d.A !== pair.A || d.B !== pair.B) continue;
+    /* 只统计还有区分力的段落：饱和段落是运气不是信息 */
+    const okA = (d.ba||[]).map(blockDiscriminates);
+    const okB = (d.bb||[]).map(blockDiscriminates);
     const av = (d.ba||[]).map(b=>scoreOf(tr,b));
     const bv = (d.bb||[]).map(b=>scoreOf(tr,b));
-    if (av.length >= 2 && bv.length >= 2){ D.push(av[0]-bv[0]); D.push(av[1]-bv[1]); }
-    else if (av.length && bv.length){ D.push(av[0]-bv[0]); }
+    const use = [];
+    for (let i=0;i<Math.min(av.length,bv.length,2);i++){
+      if (okA[i] && okB[i]) use.push(av[i]-bv[i]);
+    }
+    skipped += Math.max(0, Math.min(av.length,bv.length) - use.length);
+    if (use.length) D.push(...use);
+    else if (av.length && bv.length && okA[0] && okB[0]) D.push(av[0]-bv[0]);
   }
   if (!D.length) return null;
   const mean = avg(D);
   const se = D.length>1 ? Math.sqrt(varr(D)/D.length) : Infinity;
   const thr = Math.max(2.0, 2.0*se);
-  return { mean, se, thr, n:D.length, D };
+  return { mean, se, thr, n:D.length, D, skipped };
 }
 async function finalizeTrack(tr, opts){
   let R = decide(tr);
@@ -2803,8 +2831,15 @@ async function finalizeTrack(tr, opts){
     if (iter >= 1 && gapRel <= 0.012){ tr.tinyGap = true; break; }
     iter++;
     const task = opts.taskList[(iter-1) % opts.taskList.length];
+    /* 难度只在「还打得动」时才往上提。原先每轮无条件 +1，用户实测会被推到
+       Lv.10~12 的变向/跟枪（靶圈 1.98°/0.90°、换向 0.42~0.66s），几乎全部落空 ——
+       那一轮既没有信息量，又纯消耗精力和时间。现在一旦分数接近地板就锁定难度。 */
+    const lastScores = [];
+    for (const d of tr.duelLog){ if (d.main || d.deepen){ lastScores.push(...(d.sA||[]), ...(d.sB||[])); } }
+    const recent = lastScores.slice(-8);
+    const tooHard = recent.length >= 4 && avg(recent) < 42;
     const ms = Math.min(meanScore(tr, R.pair.A), meanScore(tr, R.pair.B));
-    let baseL = Math.min(LV_MAX, opts.levelStart + iter - 1);
+    let baseL = Math.min(LV_MAX, opts.levelStart + (tooHard ? 0 : iter - 1));
     if (ms < 42) baseL = Math.min(baseL, opts.levelStart);
     const L = effL(tr, baseL);
     const S = R.st;
@@ -2816,8 +2851,8 @@ async function finalizeTrack(tr, opts){
       当前：${R.pair.A.v.toFixed(2)} vs ${R.pair.B.v.toFixed(2)} · 配对差值均值
       <b>${S?S.mean.toFixed(1):'—'} 分</b> · 噪声阈值 <b>${S?(Number.isFinite(S.thr)?S.thr.toFixed(1):'∞'):'—'}</b> · 已有 ${S?S.n:0} 组配对样本<br>
       ${levelLine(L, task)}${biasNote(tr)}<br>
-      本轮：换任务（${TASK_NAME[task]}）${ms<42?'（分数已接近地板，难度保持）':'并把难度提上去'} + ABBA 再跑 4 段。${peekTxt}<br>
-      <span style="color:#ffb454">若检测到疲劳信号，自动深化会立即停止。</span></div>`);
+      本轮：换任务（${TASK_NAME[task]}）${tooHard?'（近期分数接近地板，<b>难度保持不再上调</b>）':(ms<42?'（分数已接近地板，难度保持）':'并把难度提上去')} + ABBA 再跑 4 段。${peekTxt}<br>
+      <span style="color:#ffb454">若检测到疲劳信号，自动深化会立即停止。分数过低的段落不计入统计。</span></div>`);
     chk();
     await maybeRest(tr, iter === 1);
     await fatigueCheck(tr);

@@ -47,6 +47,10 @@
   label{font-size:14px;color:#b9c6da}
   input[type=number],select{background:#141a24;border:1px solid #263041;color:#e8eef8;
     border-radius:8px;padding:8px 10px;font-size:15px;min-width:110px}
+  /* 提示文字较长的输入框：默认 110px 会把占位提示截断，按文字长度给足宽度 */
+  input[type=number].w-ph{width:auto}
+  input[type=number].w-dpi{min-width:180px}
+  input[type=number].w-sens{min-width:218px}
   input[type=checkbox]{width:16px;height:16px}
   .btn{background:#2b6cff;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:16px;cursor:pointer}
   .btn.secondary{background:#1b2534;color:#cfe0ff}
@@ -310,7 +314,7 @@
           <option value="30">30 Hz（最细）</option>
         </select>
       </label>
-      <label>实测 DPI <input type="number" id="dpiMeasured" placeholder="留空=用上面填的值" min="100" max="6400" step="1"></label>
+      <label>实测 DPI <input type="number" id="dpiMeasured" class="w-ph w-dpi" placeholder="留空=用上面填的值" min="100" max="6400" step="1"></label>
     </div>
     <p class="hint" id="teleHint" style="margin:6px 0 0">
       勾选后，每一段会额外记录：<b>逐帧准星与目标角度</b>（含准星在目标运动前方/后方、是否来回修正）、
@@ -325,7 +329,7 @@
   <div class="box">
     <h2>③ 腰射测试</h2>
     <div class="field">
-      <label>当前灵敏度 <input type="number" id="sens" placeholder="留空=按 eDPI 1120 估计" min="0.1" max="10" step="0.01"></label>
+      <label>当前灵敏度 <input type="number" id="sens" class="w-ph w-sens" placeholder="留空=按 eDPI 1120 估计" min="0.05" max="20" step="0.01"></label>
       <label>测试长度
         <select id="rounds">
           <option value="quick">快速 · 约 8 分钟</option>
@@ -1156,7 +1160,9 @@ function teleAggregate(){
   /* 领先/落后（只在目标确有运动时统计） */
   const leads = frames.filter(f=>Number.isFinite(f.lead));
   const ahead = leads.filter(f=>f.lead > 0).length;
-  /* 反应延迟：从「目标出现 / 变向」到准星首次进入靶圈的时间 */
+  /* 反应延迟：从「目标出现 / 变向」到准星首次进入靶圈的时间。
+     只统计「确实经历了一段收敛」的样本：变向后准星本来就在圈内时差值为 0，
+     把它算进去会让中位数恒为 0，读不出"重新跟上要多久"。 */
   const lags = [], turnLags = [];
   for (const b of blocks){
     if (!b.frames || !b.frames.length) continue;
@@ -1165,7 +1171,7 @@ function teleAggregate(){
       const hit = b.frames.find(f => f.t >= ev.t && Number.isFinite(f.ratio) && f.ratio <= 1);
       if (!hit) continue;
       const d = +(hit.t - ev.t).toFixed(3);
-      if (d >= 0 && d <= 3){ (ev.kind === 'spawn' ? lags : turnLags).push(d); }
+      if (d >= 0.05 && d <= 3){ (ev.kind === 'spawn' ? lags : turnLags).push(d); }
     }
   }
   const hits = clicks.filter(c=>c.hit).length;
@@ -1183,7 +1189,7 @@ function teleAggregate(){
     moveMicroFrac: mags.length ? mags.filter(v=>v<=3).length/mags.length : null,
     /* 过冲后反复拉回 */
     reversals: rev,
-    reversalsPerMin: null,   /* 下面用总时长算 */
+    reversalsPerMin: null,   /* 由 totalSeconds 在渲染时算出 */
     /* 提前量 */
     leadFrac: leads.length ? ahead/leads.length : null,
     leadSamples: leads.length,
@@ -1200,6 +1206,7 @@ function aimAnalysisHTML(){
   const A = teleAggregate();
   if (!A) return '';
   if (A.totalSeconds > 0) A.reversalsPerMin = A.reversals / (A.totalSeconds/60);
+  const revRate = (A.totalSeconds > 0) ? A.reversals / (A.totalSeconds/60) : null;
   const pct = v => (v===null||!Number.isFinite(v)) ? '—' : (v*100).toFixed(0) + '%';
   const n1 = v => (v===null||!Number.isFinite(v)) ? '—' : (+v).toFixed(1);
   const n2 = v => (v===null||!Number.isFinite(v)) ? '—' : (+v).toFixed(2);
@@ -1211,9 +1218,9 @@ function aimAnalysisHTML(){
   if (A.leadFrac !== null && A.leadSamples > 20) notes.push(A.leadFrac >= 0.5
     ? '运动方向上准星有 <b>' + pct(A.leadFrac) + '</b> 的时间处在目标前方——提前量偏主动（可能抢靶，注意别过冲）。'
     : '只有 <b>' + pct(A.leadFrac) + '</b> 的时间在目标前方——多数时候在"追"目标，可尝试预判变向。');
-  if (A.reversalsPerMin !== null) notes.push(A.reversalsPerMin > 60
-    ? '反向修正 <b>' + A.reversalsPerMin.toFixed(0) + ' 次/分钟</b> 偏高：典型过冲后反复拉回，建议降低灵敏度或缩短单次移动。'
-    : '反向修正 <b>' + A.reversalsPerMin.toFixed(0) + ' 次/分钟</b>，属于可控范围。');
+  if (revRate !== null) notes.push(revRate > 60
+    ? '反向修正 <b>' + revRate.toFixed(0) + ' 次/分钟</b> 偏高：典型过冲后反复拉回，建议降低灵敏度或缩短单次移动。'
+    : '反向修正 <b>' + revRate.toFixed(0) + ' 次/分钟</b>，属于可控范围。');
   if (A.moveBigFrac !== null && A.moveMicroFrac !== null) notes.push(A.moveBigFrac >= 0.25
     ? '大幅移动占比 <b>' + pct(A.moveBigFrac) + '</b>、微调 <b>' + pct(A.moveMicroFrac) + '</b>：以甩枪为主，注意甩到位后的收尾。'
     : '大幅移动占比 <b>' + pct(A.moveBigFrac) + '</b>、微调 <b>' + pct(A.moveMicroFrac) + '</b>：以微调为主，可留意转身/大范围转移是否够快。');
@@ -1230,7 +1237,7 @@ function aimAnalysisHTML(){
   L.push(row('点击命中率', pct(A.hitRate), '点击类段的命中比例（含超时未点击）'));
   L.push(row('鼠标幅度 均值 / 大幅 / 微调', n1(A.moveMeanAbs) + ' 计数 · ' + pct(A.moveBigFrac) + ' · ' + pct(A.moveMicroFrac),
             '大幅 = 单次 >40 计数；微调 = 单次 ≤3 计数。两者比例反映你的操作结构'));
-  L.push(row('反向修正', (A.reversalsPerMin!==null? A.reversalsPerMin.toFixed(0)+' 次/分钟':'') + '（共 ' + A.reversals + ' 次）',
+  L.push(row('反向修正', (revRate!==null? revRate.toFixed(0)+' 次/分钟':'') + '（共 ' + A.reversals + ' 次）',
             '相邻水平输入方向翻转且总幅度 >8 计数的次数——过冲后反复拉回的信号'));
   L.push(row('提前量（准星在目标前方）', pct(A.leadFrac) + '（' + A.leadSamples + ' 帧样本）',
             '只在目标确有运动的帧上统计；偏主动说明有预判，偏低说明多在追目标'));
@@ -2415,13 +2422,40 @@ const effL = (tr, L)=> clamp(Math.round(fin(L,5) + (tr.lvBias||0)), 1, LV_MAX);
 const biasNote = tr => (tr && tr.lvBias ? `（自适应 ${tr.lvBias>0?'+':''}${tr.lvBias}）` : '');
 
 /* ============================ 18. 候选点 / 搜索 / 对决 / 深化 ============================ */
+/* 起点只是猜测：允许搜索相对起点走的对数距离。初始窄（防噪），
+   连续几轮无法改善领先者时逐步放宽，最终以 bounds 为绝对边界。
+   上限 1.30 对数单位 ≈ 20 倍，足够覆盖 bounds 全宽（默认约 9 倍）。
+   —— 若不允许放宽，起点离真值较远时结论会被起点决定（用户实测：填 1600 与留空分别得到 3.4~3.6 与 1.4）。 */
+const DRIFT_CAP0 = 0.34, DRIFT_CAP_MAX = 1.30;
+/* 起始覆盖：开局几轮不围绕「起点」打转，而是按等比级数铺满整个合理范围。
+   为什么必须这样：起点只是用户的猜测，若只在起点附近爬山，
+   真实最优值离起点较远时（例如用户把 1600 填进灵敏度框、起点被夹到上限）
+   就永远搜不到，结论会被起点决定。先铺开、再围绕领先者精修。 */
+const SWEEP_N = 3;
 function newTrack(initV, step){
-  return { initV, pool:[], leader:null, search:{step, dir:1},
+  return { initV, pool:[], leader:null, search:{step, dir:1, driftCap:DRIFT_CAP0, noGain:0},
+           sweep:null, sweepIdx:0, sweepDone:false,
            roundLog:[], duelLog:[], comfort:null, rec:null, interval:null, verdict:null, st:null,
            pair:null, finalPair:null, skipped:false, deepenCount:0, tinyGap:false,
            anchors:[], seg:0, fatigued:false, fatigueRested:false, fatigueEpisodes:0, recovered:false,
            deepStopped:false, taskSeen:{}, bal:0, lvBias:0,
            modelNew:0, modelAdopt:0, modelPairs:0, modelLog:[], modelLastV:null, modelPeek:null };
+}
+/* 生成覆盖点：几何级数铺满 [bounds.lo, bounds.hi]，按「离起点的对数距离」从近到远排序，
+   这样前几轮先确认附近区域，再逐步向外扩张 —— 每一轮的对比都仍然是有意义的对照。 */
+function buildSweep(tr){
+  const lo = Math.max(1e-3, bounds.lo), hi = Math.max(lo*1.001, bounds.hi);
+  const n = SWEEP_N, r = Math.pow(hi/lo, 1/(n-1));
+  const startX = vToX(fin(tr.initV, baseSens));
+  const xs = [];
+  for (let i=0;i<n;i++) xs.push(vToX(clamp(lo*Math.pow(r,i), bounds.lo, bounds.hi)));
+  xs.sort((a,b)=> Math.abs(a-startX) - Math.abs(b-startX));
+  const out = [];
+  for (const x of xs){
+    const v = xToV(x);
+    if (!out.some(u=>Math.abs(u-v) < 1e-9)) out.push(v);
+  }
+  return out;
 }
 function xToV(x){ return round2(Math.pow(10,x)); }
 function vToX(v){ return Math.log10(v); }
@@ -2473,9 +2507,14 @@ function famMean(tr, c, fam){
   const a = c.blocks.filter(b=>FAMILY[b.task]===fam);
   return a.length ? avg(a.map(b=>scoreOf(tr,b))) : null;
 }
-function proposeChallenger(tr, lead, dir, step){
+/* 挑战者提议。driftCap 是「相对初始值允许走多远」的对数上限：
+   起点只是猜测，不能让它决定答案能落在哪 —— 卡在边界上时 runSearchRound 会放宽它
+   （见 tr.search.driftCap），否则真实最优值若在窗口外就永远搜不到，
+   结果会被起点决定（用户实测过：填 1600 与留空分别得到 3.4~3.6 与 1.4）。 */
+function proposeChallenger(tr, lead, dir, step, driftCap){
   const initX = vToX(tr.initV);
-  const driftLimit = 0.34;
+  const driftLimit = Number.isFinite(driftCap) ? driftCap
+    : fin(tr && tr.search && tr.search.driftCap, 0.34);
   for (const sgn of [dir,-dir]){
     for (const m of [1, 0.75, 0.5]){
       const X = clampX(lead.X + sgn*step*m, tr);
@@ -2490,6 +2529,7 @@ function proposeChallenger(tr, lead, dir, step){
     for (let k=1;k<=10;k++){
       const v = round2(lead.v + sgn*k*0.01*Math.max(1, lead.v));
       if (v < bounds.lo || v > bounds.hi) continue;
+      if (Math.abs(vToX(v) - initX) > driftLimit) continue;
       if (tr.pool.some(c=>Math.abs(c.v-v) < 1e-9)) continue;
       return addCand(tr, vToX(v));
     }
@@ -2596,13 +2636,38 @@ async function runSearchRound(tr, spec){
     }
   }
   if (!ch){
-    ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step);
+    /* —— 起始覆盖：先把整个合理范围铺开（顺序由近到远），再进入围绕领先者的精修 ——
+       没有这一步，起点离真值较远时（用户把 1600 填进灵敏度框 → 夹到上限）就永远搜不到，
+       结论会被起点决定。 */
+    if (!tr.sweepDone){
+      if (!tr.sweep) tr.sweep = buildSweep(tr);
+      while (tr.sweepIdx < tr.sweep.length){
+        const v = tr.sweep[tr.sweepIdx++];
+        if (v < bounds.lo || v > bounds.hi) continue;
+        if (tr.pool.some(c=>Math.abs(c.v-v) < 1e-9)) continue;
+        ch = addCand(tr, vToX(v));
+        if (ch) break;
+      }
+      if (tr.sweepIdx >= tr.sweep.length) tr.sweepDone = true;
+    }
+  }
+  if (!ch){
+    /* 传当前漂移预算：搜索被起点框住时允许逐步放宽，否则真实最优值在窗口外就永远搜不到 */
+    const dc = fin(tr.search.driftCap, DRIFT_CAP0);
+    ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, dc);
     if (!ch){ tr.search.dir = -tr.search.dir; tr.search.step *= 0.7;
-              ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step); }
+              ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, dc); }
     if (!ch){
-      const v = round2(clamp(tr.leader.v*1.01, bounds.lo, bounds.hi));
-      ch = addCand(tr, vToX(v));
-      if (ch === tr.leader) return { winner:'tie', tied:true };
+      /* 预算内确实无点可提 → 放宽预算（不缩小步长）：这是「起点猜偏了」的唯一出路 */
+      if (dc < DRIFT_CAP_MAX){
+        tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.5);
+        ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, tr.search.driftCap);
+      }
+      if (!ch){
+        const v = round2(clamp(tr.leader.v*1.01, bounds.lo, bounds.hi));
+        ch = addCand(tr, vToX(v));
+        if (ch === tr.leader) return { winner:'tie', tied:true };
+      }
     }
   }
   const stepAbs = Math.abs(ch.v - tr.leader.v);
@@ -2613,6 +2678,29 @@ async function runSearchRound(tr, spec){
   if (mEntry) mEntry.outcome = out.winner==='B' ? 'win' : (out.winner==='A' ? 'lose' : 'tie');
   if (out.winner==='B'){ tr.leader = out.B; }
   else { tr.search.dir = -tr.search.dir; tr.search.step *= (out.winner==='A' ? 0.6 : 0.75); }
+  /* 停滞就放宽漂移预算：连续几轮挑战者都赢不了领先者，说明很可能还没搜到正确区域
+     （起点猜偏了）。只放宽、不回缩，并以 bounds 为绝对边界。
+     这一条是「结论不被起点决定」的关键 —— 没有它，起点离真值超过 2.19 倍就永远够不着
+     （用户实测：灵敏度框填 1600 与留空，同一份手感得到 3.4~3.6 与 1.4）。 */
+  if (out.winner === 'B' || out.winner === 'tie'){
+    tr.search.noGain = 0;
+  } else if (tr.sweepDone){
+    /* 只在「起始覆盖已铺完」之后才放宽：覆盖阶段的胜负本来就可能是故意往外试，
+       那时放宽预算没有意义，反而会让后续精修跳得太野。 */
+    tr.search.noGain = fin(tr.search.noGain, 0) + 1;
+    const dc = fin(tr.search.driftCap, DRIFT_CAP0);
+    if (dc < DRIFT_CAP_MAX) tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.35);
+  }
+  /* —— 关键：预算必须覆盖「当前领先者」。起点只是猜测，如果覆盖阶段发现更好的区域在远处，
+     而预算仍以起点为中心，那么在领先者附近精修会被自己的上限挡死（实测：起点 4.33、
+     覆盖后领先者 1.22，却因为 1.22 距起点 0.55 > 预算 0.46 而再也提不出候选）。 */
+  {
+    const dLead = Math.abs(vToX(tr.leader.v) - vToX(tr.initV));
+    const need = dLead + 0.06;
+    if (fin(tr.search.driftCap, DRIFT_CAP0) < need){
+      tr.search.driftCap = Math.min(DRIFT_CAP_MAX, need);
+    }
+  }
   return out;
 }
 /* —— 模型实测对局：基准 vs 模型新候选（持续推算的“检验”环节） —— */
@@ -3945,7 +4033,18 @@ showPage('modePick');
 /* ============================ 23. 配置 / 预览 / 按钮 ============================ */
 function readCfgSoft(){
   cfg.dpi = clamp(parseInt($('dpi').value)||800,100,6400);
-  const s = parseFloat($('sens').value); cfg.startSens = (isFinite(s)&&s>0)? s : null;
+  /* 先算 bounds（它依赖 DPI），才能判断「当前灵敏度」是否越界。
+     这个框要的是游戏内灵敏度，不是 eDPI —— 用户很容易搞混（曾把 1600 填进来，
+     被静默夹到上限 4.33，导致搜索窗口完全错位）。越界必须可见。 */
+  computeBounds();
+  const s = parseFloat($('sens').value);
+  cfg.startSens = (isFinite(s)&&s>0)? s : null;
+  cfg.startSensRaw = (isFinite(s)&&s>0)? s : null;
+  cfg.startSensClamped = null;
+  if (cfg.startSens !== null){
+    const c = clamp(cfg.startSens, bounds.lo, bounds.hi);
+    if (Math.abs(c - cfg.startSens) > 1e-9){ cfg.startSensClamped = { raw:cfg.startSens, used:c }; cfg.startSens = c; }
+  }
   cfg.fovBasis = $('fovBasis').value;
   const fv = parseFloat($('fov').value);
   cfg.fovRaw = Number.isFinite(fv) ? fv : 110;
@@ -4010,6 +4109,12 @@ function ratioToLabel(a){
   return x.toFixed(3) + ':1';
 }
 const ASPECT_LABEL = ratioToLabel;
+/* 提示里显示用户填的数值：整数就显示整数，小数最多两位 */
+const fmtNum = v => {
+  const n = fin(v, NaN);
+  if (!Number.isFinite(n)) return String(v);
+  return (Math.abs(n - Math.round(n)) < 1e-9) ? String(Math.round(n)) : n.toFixed(2);
+};
 function updatePreview(){
   try{
     readCfgSoft(); syncFovInputLimits();
@@ -4048,6 +4153,12 @@ function updatePreview(){
     /* 自定义比例填错时的提示（会回退到 16:9，必须让用户看见） */
     if (cfg.aspectBad){
       warn += `<br><span style="color:#ffb454">⚠ 自定义比例「${String(cfg.aspectBad).slice(0,24)}」无法识别，已按 16:9 处理。请填 <b>16:11</b> 这样的比例，或直接填小数 <b>1.4545</b>。</span>`;
+    }
+    /* 「当前灵敏度」越界：必须明确告知实际用了多少，不能静默夹取 */
+    if (cfg.startSensClamped){
+      warn += `<br><span style="color:#ffb454">⚠ 「当前灵敏度」填的 <b>${fmtNum(cfg.startSensClamped.raw)}</b> 超出合理范围 `
+        + `<b>${bounds.lo} ~ ${bounds.hi}</b>（按 DPI ${dpi} 换算），将按 <b>${cfg.startSensClamped.used}</b> 处理。<br>`
+        + `　这个框要填的是<b>游戏内灵敏度</b>，不是 eDPI。${cfg.startSensClamped.raw > bounds.hi*2 ? '（看起来像是填了 eDPI：eDPI ' + fmtNum(cfg.startSensClamped.raw) + ' 在 DPI ' + dpi + ' 下约等于灵敏度 ' + fmtNum(cfg.startSensClamped.raw/dpi) + '）' : ''}</span>`;
     }
     $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
       · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}

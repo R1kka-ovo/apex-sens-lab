@@ -55,14 +55,16 @@
   .btn{background:#2b6cff;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:16px;cursor:pointer}
   .btn.secondary{background:#1b2534;color:#cfe0ff}
   .btn:hover{filter:brightness(1.1)}
-  /* 数据反馈群：四个界面页脚各一处，可见但不抢眼（测试画面里不出现） */
+  /* 数据反馈（GitHub）：四个界面页脚各一处，可见但不抢眼（测试画面里不出现） */
   .groupFoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;
     margin:22px 0 0;padding-top:14px;border-top:1px solid #1c2532;
     font-size:12.5px;color:#77879e}
   .groupFoot .gt{color:#8fa2bd}
+  .groupFoot a{color:#8fa2bd;text-decoration:none;border-bottom:1px dotted #3a4b63}
+  .groupFoot a:hover{color:#cfe0ff;border-bottom-color:#5b7a9c}
   .groupFoot .gn{color:#a9bdd8;font-variant-numeric:tabular-nums;letter-spacing:.4px;font-weight:600}
   .groupFoot .gbtn{background:transparent;border:1px solid #2b3b52;color:#9fb3cd;
-    border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer}
+    border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer;text-decoration:none}
   .groupFoot .gbtn:hover{border-color:#3d5573;color:#cfe0ff}
   .groupFoot .gbtn.done{border-color:#2f6a4a;color:#7fd8a3}
   .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
@@ -170,11 +172,10 @@
       · 测试记录文件由结论页或配置页的「导出」按钮生成，纯本地文本，不含任何自动上传。
     </p>
   </details>
-  <div class="groupFoot">
-    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
-    <span class="gn">1049580985</span>
-    <button class="gbtn" data-group="1049580985">复制群号</button>
-    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+    <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
+    <span class="gt">数据反馈</span>
+    <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
 
@@ -241,11 +242,10 @@
   <div class="row"><button id="startBtnImport" class="btn" disabled style="opacity:.45">继续测量（收窄范围）</button>
     <button id="backBtn2" class="btn secondary">返回 · 重新选择</button></div>
   <p class="hint" id="preview2"></p>
-  <div class="groupFoot">
-    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
-    <span class="gn">1049580985</span>
-    <button class="gbtn" data-group="1049580985">复制群号</button>
-    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+    <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
+    <span class="gt">数据反馈</span>
+    <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
 
@@ -457,11 +457,10 @@
   <div class="row"><button id="startBtn" class="btn">开始（全屏）</button>
     <button id="backBtn" class="btn secondary">返回 · 重新选择</button></div>
   <p class="hint" id="preview"></p>
-  <div class="groupFoot">
-    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
-    <span class="gn">1049580985</span>
-    <button class="gbtn" data-group="1049580985">复制群号</button>
-    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+    <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
+    <span class="gt">数据反馈</span>
+    <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
 
@@ -513,11 +512,11 @@
   </div>
   <p class="hint" id="teleStat" style="margin:6px 0 0"></p>
   <p class="hint" id="refineMsg" style="margin:6px 0 0"></p>
-  <div class="groupFoot">
-    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
-    <span class="gn">1049580985</span>
-    <button class="gbtn" data-group="1049580985">复制群号</button>
-    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+    <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
+    <span class="gt">数据反馈</span>
+    <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <a href="#" class="gbtn hidden" id="fbDataBtn">反馈这份数据</a>
+    <span>点右侧按钮会在 GitHub 打开一条预填好的 issue（含本次结论与环境信息），记得把导出的记录文件拖进去。</span>
   </div>
 </section>
 
@@ -1166,6 +1165,12 @@ function teleUpdateStat(){
   ['teleExportBtn','teleSummaryBtn'].forEach(id=>{
     const b = $(id); if (b) b.classList.toggle('hidden', !hasData);
   });
+  /* 「反馈这份数据」同理：要先把结论跑出来才有东西可反馈 */
+  try{
+    const fb = $('fbDataBtn');
+    const hasResult = !!(tracks && tracks.hip && tracks.hip.rec);
+    if (fb) fb.classList.toggle('hidden', !hasResult);
+  }catch(e){}
   if (!el) return;
   if (!tele.on){ el.textContent = ''; return; }
   el.textContent = hasData
@@ -4334,19 +4339,79 @@ $('copyBtn').onclick = ()=>{
   else fallbackCopy(t);
 };
 /* —— 导出测试记录：只在结论页有按钮（准备界面没有数据，不摆无用的导出入口） —— */
-/* —— 数据反馈群：一键复制群号（四个界面的页脚共用，测试画面里没有） —— */
-document.querySelectorAll('.gbtn[data-group]').forEach(btn=>{
-  btn.onclick = ()=>{
-    const num = btn.getAttribute('data-group') || '';
-    if (!num) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(num).catch(()=>fallbackCopy(num));
-    else fallbackCopy(num);
-    const old = btn.textContent;
-    btn.textContent = '已复制 ✓';
-    btn.classList.add('done');
-    setTimeout(()=>{ btn.textContent = old; btn.classList.remove('done'); }, 1600);
-  };
+/* —— 数据反馈（GitHub）：仓库链接由页脚的 data-slug 生成；结果页多一个预填 issue 的按钮 —— */
+function buildFeedbackBody(){
+  const L = [];
+  L.push('### 本次测试结论');
+  L.push('');
+  L.push('```');
+  L.push(buildSummary());
+  L.push('```');
+  L.push('');
+  L.push('### 环境与设置');
+  L.push('');
+  L.push('| 项 | 值 |');
+  L.push('|---|---|');
+  L.push('| DPI（填写） | ' + cfg.dpi + ' |');
+  const dm = (cfg.dpiMeasured !== null && cfg.dpiMeasured !== undefined) ? cfg.dpiMeasured : '（未填）';
+  L.push('| 实测 DPI | ' + dm + ' |');
+  L.push('| 游戏 FOV | ' + cfg.fov + '（基准 ' + cfg.fovBasis + '） |');
+  L.push('| 分辨率比例 | ' + ASPECT_LABEL(cfg.aspect) + ' · 显示模式 ' + (cfg.display === 'stretch' ? '拉伸填满' : '黑边') + ' |');
+  const hip = tracks.hip;
+  if (hip && hip.rec){
+    L.push('| 候选值 / 配对样本 | ' + hip.pool.length + ' 个 / ' + (hip.st ? hip.st.n : 0) + ' 组 |');
+    L.push('| 深化轮数 | ' + (hip.deepenCount || 0) + ' |');
+  }
+  try{
+    const A = (typeof teleAggregate === 'function') ? teleAggregate() : null;
+    if (A) L.push('| 行为分析 | 跟枪覆盖 ' + (A.inTargetFrac*100).toFixed(0) + '% · 误差中位 ' + (A.errP50||0).toFixed(2) + '° · 反向修正 ' + A.reversals + ' 次 |');
+  }catch(e){}
+  L.push('| 屏幕 / DPR | ' + screen.width + 'x' + screen.height + ' · ' + (window.devicePixelRatio||1) + ' |');
+  L.push('| 浏览器 | ' + String(navigator.userAgent).slice(0, 120) + ' |');
+  L.push('');
+  L.push('### 请补充');
+  L.push('');
+  L.push('- **你游戏里实际用的灵敏度 / DPI**：');
+  L.push('- **本次结论与你的实际手感是否吻合**：');
+  L.push('- **具体现象**（哪一段/哪一项看起来不对）：');
+  L.push('');
+  L.push('### 附上记录文件（重要）');
+  L.push('');
+  L.push('打开这条 issue 后，把下面导出的 `.json` 直接**拖进评论框**上传：');
+  L.push('');
+  L.push('- 结果页 →「导出测试记录」：结论与全部对决数据（**必需**）');
+  L.push('- 结果页 →「导出遥测报告」：逐帧瞄准数据（开了「详细瞄准数据」时才有，可选但很有用）');
+  return L.join('\n');
+}
+function openFeedbackIssue(){
+  const host = document.querySelector('.groupFoot[data-slug]') || document.querySelector('[data-slug]');
+  const slug = host ? host.getAttribute('data-slug') : '';
+  if (!slug){ alert('反馈入口配置缺失。'); return; }
+  if (!(tracks && tracks.hip && tracks.hip.rec)){
+    alert('还没有本次测试的结果。先完成一次测试（或导入一份记录），再来反馈数据。');
+    return;
+  }
+  const title = '测试数据反馈：' + buildSummary().split('\n')[0];
+  const body = buildFeedbackBody();
+  const base = 'https://github.com/' + slug + '/issues/new';
+  /* GET 方式预填：不需要 token，任何人都能用。URL 过长时只截断正文，标题始终保留。 */
+  let url = base + '?title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+  if (url.length > 7500){
+    url = base + '?title=' + encodeURIComponent(title) + '&body=' +
+      encodeURIComponent(body.slice(0, 2200) + '\n\n（正文过长已截断，完整数据请用下方导出的记录文件）');
+  }
+  try{ window.open(url, '_blank', 'noopener'); }
+  catch(e){ location.href = url; }
+}
+/* 页脚里的仓库链接：由 data-slug 生成，避免硬编码散落各处 */
+document.querySelectorAll('[data-slug]').forEach(el=>{
+  const slug = el.getAttribute('data-slug');
+  if (!slug) return;
+  el.querySelectorAll('a[data-repo]').forEach(a=>{ a.href = 'https://github.com/' + slug; });
+  el.querySelectorAll('a[data-issues]').forEach(a=>{ a.href = 'https://github.com/' + slug + '/issues'; });
 });
+const fbBtn = $('fbDataBtn');
+if (fbBtn) fbBtn.onclick = (e)=>{ e.preventDefault(); openFeedbackIssue(); };
 $('exportBtn2').onclick = exportSnapshot;
 /* —— 遥测：开关 / 导出 —— */
 $('teleExportBtn').onclick = teleExportReport;

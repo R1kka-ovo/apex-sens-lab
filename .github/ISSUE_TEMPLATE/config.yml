@@ -1,0 +1,9 @@
+# 让 issue 页面显示「去 Discussions」等入口
+blank_issues_enabled: true
+contact_links:
+  - name: 开放讨论（去 Discussions）
+    url: https://github.com/R1kka-ovo/apex-sens-lab/discussions
+    about: 想聊聊灵敏度、分享心得、问用法？这里比 issue 更合适
+  - name: 在线使用 / 最新版本
+    url: https://r1kka-ovo.github.io/apex-sens-lab/
+    about: 打开就能用，无需下载

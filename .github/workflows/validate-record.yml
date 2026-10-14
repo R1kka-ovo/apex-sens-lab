@@ -1,0 +1,55 @@
+name: 校验测试记录
+
+# 有人在 issue / PR 里附上导出的 .json 记录时，自动下载并校验，
+# 把结果作为评论贴回去 —— 不用手动下载分析。
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened, edited]
+  pull_request_target:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    # 只在正文/评论里出现链接时才跑，省额度
+    if: |
+      contains(github.event.comment.body, 'http') ||
+      contains(github.event.issue.body, 'http') ||
+      contains(github.event.pull_request.body, 'http')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载附件并校验
+        id: check
+        env:
+          BODY: ${{ github.event.comment.body || github.event.issue.body || github.event.pull_request.body }}
+        run: node tools/collect-and-validate.js
+
+      - name: 把结果评论回去
+        if: steps.check.outputs.report != ''
+        uses: actions/github-script@v7
+        env:
+          REPORT: ${{ steps.check.outputs.report }}
+        with:
+          script: |
+            const body = [
+              '## 记录校验结果（自动）',
+              '',
+              '由 `tools/validate-snapshot.js` 自动生成，只做格式与量纲检查；结论是否正确我会再人工看一遍。',
+              '',
+              process.env.REPORT
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });

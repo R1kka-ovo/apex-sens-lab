@@ -55,6 +55,16 @@
   .btn{background:#2b6cff;color:#fff;border:0;border-radius:10px;padding:12px 24px;font-size:16px;cursor:pointer}
   .btn.secondary{background:#1b2534;color:#cfe0ff}
   .btn:hover{filter:brightness(1.1)}
+  /* 数据反馈群：四个界面页脚各一处，可见但不抢眼（测试画面里不出现） */
+  .groupFoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;
+    margin:22px 0 0;padding-top:14px;border-top:1px solid #1c2532;
+    font-size:12.5px;color:#77879e}
+  .groupFoot .gt{color:#8fa2bd}
+  .groupFoot .gn{color:#a9bdd8;font-variant-numeric:tabular-nums;letter-spacing:.4px;font-weight:600}
+  .groupFoot .gbtn{background:transparent;border:1px solid #2b3b52;color:#9fb3cd;
+    border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer}
+  .groupFoot .gbtn:hover{border-color:#3d5573;color:#cfe0ff}
+  .groupFoot .gbtn.done{border-color:#2f6a4a;color:#7fd8a3}
   .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
   .hint{color:#8b9bb2;font-size:13px;line-height:1.75}
   .box{background:#10151f;border:1px solid #1d2634;border-radius:12px;padding:14px 16px;margin:12px 0}
@@ -160,6 +170,12 @@
       · 测试记录文件由结论页或配置页的「导出」按钮生成，纯本地文本，不含任何自动上传。
     </p>
   </details>
+  <div class="groupFoot">
+    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
+    <span class="gn">1049580985</span>
+    <button class="gbtn" data-group="1049580985">复制群号</button>
+    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+  </div>
 </section>
 
 <section id="importPage" class="panel hidden">
@@ -225,6 +241,12 @@
   <div class="row"><button id="startBtnImport" class="btn" disabled style="opacity:.45">继续测量（收窄范围）</button>
     <button id="backBtn2" class="btn secondary">返回 · 重新选择</button></div>
   <p class="hint" id="preview2"></p>
+  <div class="groupFoot">
+    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
+    <span class="gn">1049580985</span>
+    <button class="gbtn" data-group="1049580985">复制群号</button>
+    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+  </div>
 </section>
 
 <section id="setup" class="panel hidden">
@@ -435,6 +457,12 @@
   <div class="row"><button id="startBtn" class="btn">开始（全屏）</button>
     <button id="backBtn" class="btn secondary">返回 · 重新选择</button></div>
   <p class="hint" id="preview"></p>
+  <div class="groupFoot">
+    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
+    <span class="gn">1049580985</span>
+    <button class="gbtn" data-group="1049580985">复制群号</button>
+    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+  </div>
 </section>
 
 <section id="results" class="panel hidden">
@@ -485,6 +513,12 @@
   </div>
   <p class="hint" id="teleStat" style="margin:6px 0 0"></p>
   <p class="hint" id="refineMsg" style="margin:6px 0 0"></p>
+  <div class="groupFoot">
+    <span class="gt">Apex 灵敏度实验台数据反馈群</span>
+    <span class="gn">1049580985</span>
+    <button class="gbtn" data-group="1049580985">复制群号</button>
+    <span>测出奇怪结果，或想帮我们改进判定？欢迎进群把记录发给我们。</span>
+  </div>
 </section>
 
 <script>
@@ -2441,22 +2475,6 @@ function newTrack(initV, step){
            deepStopped:false, taskSeen:{}, bal:0, lvBias:0,
            modelNew:0, modelAdopt:0, modelPairs:0, modelLog:[], modelLastV:null, modelPeek:null };
 }
-/* 生成覆盖点：几何级数铺满 [bounds.lo, bounds.hi]，按「离起点的对数距离」从近到远排序，
-   这样前几轮先确认附近区域，再逐步向外扩张 —— 每一轮的对比都仍然是有意义的对照。 */
-function buildSweep(tr){
-  const lo = Math.max(1e-3, bounds.lo), hi = Math.max(lo*1.001, bounds.hi);
-  const n = SWEEP_N, r = Math.pow(hi/lo, 1/(n-1));
-  const startX = vToX(fin(tr.initV, baseSens));
-  const xs = [];
-  for (let i=0;i<n;i++) xs.push(vToX(clamp(lo*Math.pow(r,i), bounds.lo, bounds.hi)));
-  xs.sort((a,b)=> Math.abs(a-startX) - Math.abs(b-startX));
-  const out = [];
-  for (const x of xs){
-    const v = xToV(x);
-    if (!out.some(u=>Math.abs(u-v) < 1e-9)) out.push(v);
-  }
-  return out;
-}
 function xToV(x){ return round2(Math.pow(10,x)); }
 function vToX(v){ return Math.log10(v); }
 function clampX(x, tr){
@@ -2507,10 +2525,24 @@ function famMean(tr, c, fam){
   const a = c.blocks.filter(b=>FAMILY[b.task]===fam);
   return a.length ? avg(a.map(b=>scoreOf(tr,b))) : null;
 }
+/* 生成覆盖点：几何级数铺满 [bounds.lo, bounds.hi]，按「离起点的对数距离」从近到远排序，
+   这样前几轮先确认附近区域，再逐步向外扩张 —— 每一轮的对比都仍然是有意义的对照。 */
+function buildSweep(tr){
+  const lo = Math.max(1e-3, bounds.lo), hi = Math.max(lo*1.001, bounds.hi);
+  const n = SWEEP_N, r = Math.pow(hi/lo, 1/(n-1));
+  const startX = vToX(fin(tr.initV, baseSens));
+  const xs = [];
+  for (let i=0;i<n;i++) xs.push(vToX(clamp(lo*Math.pow(r,i), bounds.lo, bounds.hi)));
+  xs.sort((a,b)=> Math.abs(a-startX) - Math.abs(b-startX));
+  const out = [];
+  for (const x of xs){
+    const v = xToV(x);
+    if (!out.some(u=>Math.abs(u-v) < 1e-9)) out.push(v);
+  }
+  return out;
+}
 /* 挑战者提议。driftCap 是「相对初始值允许走多远」的对数上限：
-   起点只是猜测，不能让它决定答案能落在哪 —— 卡在边界上时 runSearchRound 会放宽它
-   （见 tr.search.driftCap），否则真实最优值若在窗口外就永远搜不到，
-   结果会被起点决定（用户实测过：填 1600 与留空分别得到 3.4~3.6 与 1.4）。 */
+   起点只是猜测，不能让它决定答案能落在哪 —— 卡在边界上时 runSearchRound 会放宽它。 */
 function proposeChallenger(tr, lead, dir, step, driftCap){
   const initX = vToX(tr.initV);
   const driftLimit = Number.isFinite(driftCap) ? driftCap
@@ -2652,13 +2684,11 @@ async function runSearchRound(tr, spec){
     }
   }
   if (!ch){
-    /* 传当前漂移预算：搜索被起点框住时允许逐步放宽，否则真实最优值在窗口外就永远搜不到 */
     const dc = fin(tr.search.driftCap, DRIFT_CAP0);
     ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, dc);
     if (!ch){ tr.search.dir = -tr.search.dir; tr.search.step *= 0.7;
               ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, dc); }
     if (!ch){
-      /* 预算内确实无点可提 → 放宽预算（不缩小步长）：这是「起点猜偏了」的唯一出路 */
       if (dc < DRIFT_CAP_MAX){
         tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.5);
         ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, tr.search.driftCap);
@@ -2679,21 +2709,16 @@ async function runSearchRound(tr, spec){
   if (out.winner==='B'){ tr.leader = out.B; }
   else { tr.search.dir = -tr.search.dir; tr.search.step *= (out.winner==='A' ? 0.6 : 0.75); }
   /* 停滞就放宽漂移预算：连续几轮挑战者都赢不了领先者，说明很可能还没搜到正确区域
-     （起点猜偏了）。只放宽、不回缩，并以 bounds 为绝对边界。
-     这一条是「结论不被起点决定」的关键 —— 没有它，起点离真值超过 2.19 倍就永远够不着
-     （用户实测：灵敏度框填 1600 与留空，同一份手感得到 3.4~3.6 与 1.4）。 */
+     （起点猜偏了）。只放宽、不回缩，并以 bounds 为绝对边界。 */
   if (out.winner === 'B' || out.winner === 'tie'){
     tr.search.noGain = 0;
   } else if (tr.sweepDone){
-    /* 只在「起始覆盖已铺完」之后才放宽：覆盖阶段的胜负本来就可能是故意往外试，
-       那时放宽预算没有意义，反而会让后续精修跳得太野。 */
     tr.search.noGain = fin(tr.search.noGain, 0) + 1;
     const dc = fin(tr.search.driftCap, DRIFT_CAP0);
     if (dc < DRIFT_CAP_MAX) tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.35);
   }
-  /* —— 关键：预算必须覆盖「当前领先者」。起点只是猜测，如果覆盖阶段发现更好的区域在远处，
-     而预算仍以起点为中心，那么在领先者附近精修会被自己的上限挡死（实测：起点 4.33、
-     覆盖后领先者 1.22，却因为 1.22 距起点 0.55 > 预算 0.46 而再也提不出候选）。 */
+  /* 预算必须覆盖「当前领先者」：覆盖阶段若在远处发现更好区域，
+     而预算仍以起点为中心，精修会被自己的上限挡死。 */
   {
     const dLead = Math.abs(vToX(tr.leader.v) - vToX(tr.initV));
     const need = dLead + 0.06;
@@ -2784,14 +2809,11 @@ function blockDiscriminates(blk){
   if (!blk) return false;
   const s = blk.stats || {};
   const trials = fin(s.trials, 0) || fin(s.trialsDone, 0);
-  /* 跟枪段：覆盖与开火占比都极低 → 基本没跟上 */
   if (fin(s.samples,0) > 0){
     const close = fin(s.meanClose, NaN), fire = fin(s.fireCov, NaN);
     if (Number.isFinite(close) && Number.isFinite(fire) && close < 0.12 && fire < 0.35) return false;
   }
-  /* 点击段：命中数与点击准确率同时贴近 0 → 基本没打中 */
   if (trials > 0 && fin(s.hits,0) === 0 && fin(s.clickAcc,0) < 0.2) return false;
-  /* 兜底：分数已经在地板上 */
   if (fin(blk.score, 0) < SAT_FLOOR && trials > 0 && fin(s.hits,0) <= 0) return false;
   return true;
 }
@@ -2851,8 +2873,8 @@ async function finalizeTrack(tr, opts){
       当前：${R.pair.A.v.toFixed(2)} vs ${R.pair.B.v.toFixed(2)} · 配对差值均值
       <b>${S?S.mean.toFixed(1):'—'} 分</b> · 噪声阈值 <b>${S?(Number.isFinite(S.thr)?S.thr.toFixed(1):'∞'):'—'}</b> · 已有 ${S?S.n:0} 组配对样本<br>
       ${levelLine(L, task)}${biasNote(tr)}<br>
-      本轮：换任务（${TASK_NAME[task]}）${tooHard?'（近期分数接近地板，<b>难度保持不再上调</b>）':(ms<42?'（分数已接近地板，难度保持）':'并把难度提上去')} + ABBA 再跑 4 段。${peekTxt}<br>
-      <span style="color:#ffb454">若检测到疲劳信号，自动深化会立即停止。分数过低的段落不计入统计。</span></div>`);
+      本轮：换任务（${TASK_NAME[task]}）${ms<42?'（分数已接近地板，难度保持）':'并把难度提上去'} + ABBA 再跑 4 段。${peekTxt}<br>
+      <span style="color:#ffb454">若检测到疲劳信号，自动深化会立即停止。</span></div>`);
     chk();
     await maybeRest(tr, iter === 1);
     await fatigueCheck(tr);
@@ -4185,15 +4207,15 @@ function updatePreview(){
         dispNote = `<br><span style="color:#8b9bb2">显示模式「黑边」：保持比例、四周留黑边，画面不变形（推荐）。</span>`;
       }
     }catch(e){}
-    /* 自定义比例填错时的提示（会回退到 16:9，必须让用户看见） */
-    if (cfg.aspectBad){
-      warn += `<br><span style="color:#ffb454">⚠ 自定义比例「${String(cfg.aspectBad).slice(0,24)}」无法识别，已按 16:9 处理。请填 <b>16:11</b> 这样的比例，或直接填小数 <b>1.4545</b>。</span>`;
-    }
     /* 「当前灵敏度」越界：必须明确告知实际用了多少，不能静默夹取 */
     if (cfg.startSensClamped){
       warn += `<br><span style="color:#ffb454">⚠ 「当前灵敏度」填的 <b>${fmtNum(cfg.startSensClamped.raw)}</b> 超出合理范围 `
         + `<b>${bounds.lo} ~ ${bounds.hi}</b>（按 DPI ${dpi} 换算），将按 <b>${cfg.startSensClamped.used}</b> 处理。<br>`
         + `　这个框要填的是<b>游戏内灵敏度</b>，不是 eDPI。${cfg.startSensClamped.raw > bounds.hi*2 ? '（看起来像是填了 eDPI：eDPI ' + fmtNum(cfg.startSensClamped.raw) + ' 在 DPI ' + dpi + ' 下约等于灵敏度 ' + fmtNum(cfg.startSensClamped.raw/dpi) + '）' : ''}</span>`;
+    }
+    /* 自定义比例填错时的提示（会回退到 16:9，必须让用户看见） */
+    if (cfg.aspectBad){
+      warn += `<br><span style="color:#ffb454">⚠ 自定义比例「${String(cfg.aspectBad).slice(0,24)}」无法识别，已按 16:9 处理。请填 <b>16:11</b> 这样的比例，或直接填小数 <b>1.4545</b>。</span>`;
     }
     $('preview').innerHTML = `起始灵敏度 <b>${sens.toFixed(2)}</b>（eDPI ${(dpi*sens).toFixed(0)}，cm/360 ≈ ${cm360(dpi,sens).toFixed(1)} cm）
       · 游戏 FOV ${cfg.fov}°（基准：${cfg.fovBasis==='v'?'垂直':(cfg.fovBasis==='h43'?'4:3':'16:9')}） · 腰射视野 ${hFovHip().toFixed(1)}° / ${vFovHip().toFixed(1)}°${clampNote}
@@ -4312,6 +4334,19 @@ $('copyBtn').onclick = ()=>{
   else fallbackCopy(t);
 };
 /* —— 导出测试记录：只在结论页有按钮（准备界面没有数据，不摆无用的导出入口） —— */
+/* —— 数据反馈群：一键复制群号（四个界面的页脚共用，测试画面里没有） —— */
+document.querySelectorAll('.gbtn[data-group]').forEach(btn=>{
+  btn.onclick = ()=>{
+    const num = btn.getAttribute('data-group') || '';
+    if (!num) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(num).catch(()=>fallbackCopy(num));
+    else fallbackCopy(num);
+    const old = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('done');
+    setTimeout(()=>{ btn.textContent = old; btn.classList.remove('done'); }, 1600);
+  };
+});
 $('exportBtn2').onclick = exportSnapshot;
 /* —— 遥测：开关 / 导出 —— */
 $('teleExportBtn').onclick = teleExportReport;

@@ -1,0 +1,110 @@
+name: 数据反馈 / 测试记录
+description: 提交你的测试记录，或反馈测出来的结果与手感不符
+title: "[数据反馈] "
+labels: ["数据反馈"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间反馈！
+
+        **提交前请先看一眼**：如果只是想讨论、或不确定算不算问题，去 [Discussions](https://github.com/R1kka-ovo/apex-sens-lab/discussions) 更合适。
+
+        ### 最重要的两步
+
+        1. 打开这条 issue 后，把结果页导出的 `.json` **直接拖进下面的评论框**（不是拖到这里）
+           - 结果页 →「导出测试记录」：结论与全部对决数据（**必需**）
+           - 结果页 →「导出遥测报告」：逐帧瞄准数据（开了「详细瞄准数据」才有，可选但很有用）
+        2. 填完下面的表单后点 **Create**，机器人会**自动校验**你的记录并把读数评论回来
+
+  - type: input
+    id: player_sens
+    attributes:
+      label: 你游戏里实际用的灵敏度 / DPI
+      description: 例如「800 DPI × 1.48」或「1600 DPI × 1.2」。这是最有价值的一条信息 —— 用它才能判断工具结论和你的真实手感差多少
+      placeholder: 800 DPI × 1.48
+    validations:
+      required: true
+
+  - type: dropdown
+    id: matched
+    attributes:
+      label: 本次结论和你的实际手感吻合吗
+      options:
+        - 基本吻合（差不到 5%）
+        - 有点偏差（大概差 5%~15%）
+        - 差得比较多（超过 15%）
+        - 完全对不上
+        - 还没上手试
+    validations:
+      required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: 主要是什么问题
+      description: 可多选。选「结果看起来不合理」时，请务必在下面写清具体现象
+      multiple: true
+      options:
+        - 结果看起来不合理（值偏高/偏低/落在区间外）
+        - 打不动 —— 后半段的变向、跟枪难度超出能力
+        - 中途卡住 / 黑屏 / 按钮点不动
+        - 无法进入全屏或指针锁定
+        - 导入记录后行为异常
+        - 和其他工具 / 换算结果对不上
+        - 只是来分享数据，没有明显问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: 具体现象
+      description: 越具体越好。比如「最终对决跑到 Lv.11，快速变向几乎打不中」「导入后继续测量点开始没反应」「推荐 1.05 但我实际用 1.32」
+      placeholder: |
+        哪一段 / 哪一项看起来不对？当时大概在第几轮？
+        如果记得，贴一下页面上显示的数字。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: config_kind
+    attributes:
+      label: 当时「当前灵敏度」这一栏填了什么
+      description: 这一栏要填的是**游戏内灵敏度**（通常 0.5~5），不是 eDPI。填错会导致搜索起点偏移
+      options:
+        - 留空（用 eDPI 1120 估算）
+        - 填了游戏内灵敏度
+        - 填了 eDPI
+        - 记不清了
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: 用的浏览器
+      options:
+        - Chrome
+        - Edge
+        - Firefox
+        - 其他 / 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 系统与设置（可选）
+      description: 例如「Win11 · 2K 165Hz · 游戏内 FOV 110」；如果显示比例不是 16:9，也请写上
+      placeholder: Win11 · 2560×1440 165Hz · FOV 110 · 16:9
+
+  - type: checkboxes
+    id: attach
+    attributes:
+      label: 提交前确认（必选）
+      options:
+        - label: 我会在提交后把结果页导出的 `.json` 拖进评论框（**没有记录文件的问题很难定位**）
+          required: true
+        - label: 我已确认「当前灵敏度」填的是游戏内灵敏度，不是 eDPI
+          required: true

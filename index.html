@@ -63,6 +63,7 @@
   .groupFoot a{color:#8fa2bd;text-decoration:none;border-bottom:1px dotted #3a4b63}
   .groupFoot a:hover{color:#cfe0ff;border-bottom-color:#5b7a9c}
   .groupFoot .gn{color:#a9bdd8;font-variant-numeric:tabular-nums;letter-spacing:.4px;font-weight:600}
+  .groupFoot .gver{color:#5d6b80;font-variant-numeric:tabular-nums;letter-spacing:.3px}
   .groupFoot .gbtn{background:transparent;border:1px solid #2b3b52;color:#9fb3cd;
     border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer;text-decoration:none}
   .groupFoot .gbtn:hover{border-color:#3d5573;color:#cfe0ff}
@@ -175,6 +176,7 @@
     <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
     <span class="gt">数据反馈</span>
     <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span class="gver" data-ver></span>
     <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
@@ -245,6 +247,7 @@
     <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
     <span class="gt">数据反馈</span>
     <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span class="gver" data-ver></span>
     <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
@@ -460,6 +463,7 @@
     <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
     <span class="gt">数据反馈</span>
     <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span class="gver" data-ver></span>
     <span>测出奇怪结果、或想帮我们改进判定？在 GitHub 上开一条 issue，把导出的记录附上即可。</span>
   </div>
 </section>
@@ -515,6 +519,7 @@
     <div class="groupFoot" data-slug="R1kka-ovo/apex-sens-lab">
     <span class="gt">数据反馈</span>
     <a href="#" data-issues target="_blank" rel="noopener">提交问题 / 反馈数据</a>
+    <span class="gver" data-ver></span>
     <a href="#" class="gbtn hidden" id="fbDataBtn">反馈这份数据</a>
     <span>点右侧按钮会在 GitHub 打开一条预填好的 issue（含本次结论与环境信息），记得把导出的记录文件拖进去。</span>
   </div>
@@ -803,13 +808,26 @@ const PLAN = {
 };
 
 /* ============================ 3. 配置 / 状态 ============================ */
+/* 灵敏度的合理范围。
+   注意：刻意**不再用 DPI 反推**。
+   原实现把上下限算成 sensForCm(110,dpi) ~ sensForCm(12,dpi)，等于假设
+   「玩家可接受的 cm/360 落在 12~110 之间」。但灵敏度本身与 DPI 无关，DPI 只负责
+   换算成 cm/360 —— 高 DPI 玩家用「小数值灵敏度」完全正常。
+   实测后果：2400 DPI × 灵敏度 5（eDPI 12000）被夹成 1.44（慢 3.47 倍）、
+   1200 DPI × 灵敏度 4.28 被夹成 2.89，两人都被挡在门外、根本无法使用工具。
+   改为固定的灵敏度范围，让 DPI 只影响 cm/360 的显示与提醒。 */
+const SENS_LO = 0.02, SENS_HI = 25;
+/* 程序版本号 —— 唯一来源。
+   改版本时只改这一处：页脚、快照、遥测报告、结果摘要都会跟着变。
+   与 SNAP_SCHEMA（记录格式版本）区分：格式没变就不动 SNAP_SCHEMA。 */
+const APP_VERSION = 'v1.1.1';
 const cfg = { dpi:800, startSens:null, fov:110, fovRaw:110, fovClamped:false, fovBasis:'h169',
   aspect:16/9, display:'letterbox',
   lenKey:'std', sfx:true, deepenHip:3,
   anchorMode:'std', restEvery:5, warmAdapt:true, preWarmTasks:true,
   adaptiveDiff:true, modelOn:true, trackSfx:true, edgeArrow:true };
 
-let baseSens = 1.40, bounds = {lo:0.5, hi:3.0};
+let baseSens = 1.40, bounds = {lo: SENS_LO, hi: SENS_HI};
 let tracks = {};
 let stageInfo = {phase:'准备', idx:0, total:0};
 
@@ -1061,7 +1079,7 @@ function teleBuildReport(){
     }
   };
   return {
-    schema: 1, app: 'apex-sens-lab-telemetry', exportedAt: new Date().toISOString(),
+    schema: 1, app: 'apex-sens-lab-telemetry', appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
     /* 给 AI 的解读提示：明确口径，避免误读 */
     readme: [
       '角度单位：度。cy/cp = 准星 yaw/pitch，ty/tp = 目标 yaw/pitch，tr = 目标半径（度）。',
@@ -2463,9 +2481,11 @@ const biasNote = tr => (tr && tr.lvBias ? `（自适应 ${tr.lvBias>0?'+':''}${t
 /* ============================ 18. 候选点 / 搜索 / 对决 / 深化 ============================ */
 /* 起点只是猜测：允许搜索相对起点走的对数距离。初始窄（防噪），
    连续几轮无法改善领先者时逐步放宽，最终以 bounds 为绝对边界。
-   上限 1.30 对数单位 ≈ 20 倍，足够覆盖 bounds 全宽（默认约 9 倍）。
-   —— 若不允许放宽，起点离真值较远时结论会被起点决定（用户实测：填 1600 与留空分别得到 3.4~3.6 与 1.4）。 */
-const DRIFT_CAP0 = 0.34, DRIFT_CAP_MAX = 1.30;
+   —— 若不允许放宽，起点离真值较远时结论会被起点决定（用户实测：填 1600 与留空分别得到 3.4~3.6 与 1.4）。
+   上限按 bounds 全宽自动推导（见 DRIFT_MAX）：必须 ≥ 量程，否则「够不着」的老问题会以新形式复现
+   —— 固定 1.30（约 20 倍）在 0.02~25（1250 倍）的量程下就不够了。 */
+const DRIFT_CAP0 = 0.34;
+const DRIFT_MAX = ()=> Math.max(1.0, Math.log10(SENS_HI / SENS_LO) + 0.1);
 /* 起始覆盖：开局几轮不围绕「起点」打转，而是按等比级数铺满整个合理范围。
    为什么必须这样：起点只是用户的猜测，若只在起点附近爬山，
    真实最优值离起点较远时（例如用户把 1600 填进灵敏度框、起点被夹到上限）
@@ -2694,8 +2714,8 @@ async function runSearchRound(tr, spec){
     if (!ch){ tr.search.dir = -tr.search.dir; tr.search.step *= 0.7;
               ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, dc); }
     if (!ch){
-      if (dc < DRIFT_CAP_MAX){
-        tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.5);
+      if (dc < DRIFT_MAX()){
+        tr.search.driftCap = Math.min(DRIFT_MAX(), dc * 1.5);
         ch = proposeChallenger(tr, tr.leader, tr.search.dir, tr.search.step, tr.search.driftCap);
       }
       if (!ch){
@@ -2720,7 +2740,7 @@ async function runSearchRound(tr, spec){
   } else if (tr.sweepDone){
     tr.search.noGain = fin(tr.search.noGain, 0) + 1;
     const dc = fin(tr.search.driftCap, DRIFT_CAP0);
-    if (dc < DRIFT_CAP_MAX) tr.search.driftCap = Math.min(DRIFT_CAP_MAX, dc * 1.35);
+    if (dc < DRIFT_MAX()) tr.search.driftCap = Math.min(DRIFT_MAX(), dc * 1.35);
   }
   /* 预算必须覆盖「当前领先者」：覆盖阶段若在远处发现更好区域，
      而预算仍以起点为中心，精修会被自己的上限挡死。 */
@@ -2728,7 +2748,7 @@ async function runSearchRound(tr, spec){
     const dLead = Math.abs(vToX(tr.leader.v) - vToX(tr.initV));
     const need = dLead + 0.06;
     if (fin(tr.search.driftCap, DRIFT_CAP0) < need){
-      tr.search.driftCap = Math.min(DRIFT_CAP_MAX, need);
+      tr.search.driftCap = Math.min(DRIFT_MAX(), need);
     }
   }
   return out;
@@ -3567,7 +3587,7 @@ function makeSnapshot(){
   if (!tr || !tr.pool || !tr.pool.length) return null;
   const idx = c => tr.pool.indexOf(c);
   return {
-    schema:SNAP_SCHEMA, app:'apex-sens-lab', exportedAt:new Date().toISOString(),
+    schema:SNAP_SCHEMA, app:'apex-sens-lab', appVersion:APP_VERSION, exportedAt:new Date().toISOString(),
     cfg: Object.assign({}, cfg),
     baseSens, bounds, sessionClock,
     track: tr,
@@ -3725,6 +3745,7 @@ function snapCardHTML(s){
   const t = s.track || {};
   const d = s.meta || {};
   const v = x=> (x===null||x===undefined||!Number.isFinite(fin(x,NaN))) ? '—' : fin(x,0).toFixed(2);
+  const verTxt = (s && s.appVersion) ? String(s.appVersion) : '（旧版本，未记录）';
   const poolN = (s.cands||[]).filter(c=>(c.blocks||[]).length>0).length;
   const segN = (s.cands||[]).reduce((n,c)=>n+(c.blocks||[]).length,0);
   const dm = (s.duelLog||[]).filter(x=>x.main).length;
@@ -3732,6 +3753,7 @@ function snapCardHTML(s){
   const mins = Math.round(fin(s.sessionClock,0)/60);
   const c = s.cfg || {};
   return `<div class="snapStat"><span>记录时间</span><b>${String(s.exportedAt||'').replace('T',' ').slice(0,16)}</b></div>
+    <div class="snapStat"><span>记录版本</span><b>${verTxt}</b></div>
     <div class="snapStat"><span>推荐值</span><b>${v(d.rec)}</b></div>
     <div class="snapStat"><span>测量区间</span><b>${Array.isArray(d.interval) ? (fin(d.interval[0],0).toFixed(2)+' – '+fin(d.interval[1],0).toFixed(2)) : '—'}</b></div>
     <div class="snapStat"><span>已测候选值 / 段数</span><b>${poolN} 个 / ${segN} 段</b></div>
@@ -4142,11 +4164,10 @@ function readCfgSoft(){
   cfg.edgeArrow = $('edgeArrow').checked;
 }
 function readCfg(){ readCfgSoft(); }
+/* 灵敏度范围是固定的（见文件开头 SENS_LO / SENS_HI 的说明），这里保留函数是为了
+   调用点不变；它不再依赖 DPI。 */
 function computeBounds(){
-  const lo = round2(clamp(sensForCm(110, cfg.dpi), 0.05, 20));
-  let hi = round2(clamp(sensForCm(12, cfg.dpi), 0.1, 20));
-  if (hi <= lo+0.05) hi = round2(lo+0.2);
-  bounds = { lo, hi };
+  bounds = { lo: SENS_LO, hi: SENS_HI };
 }
 function estimateTime(){
   const hipMin = ({quick:5, std:12, full:15}[cfg.lenKey] || 12);
@@ -4212,11 +4233,13 @@ function updatePreview(){
         dispNote = `<br><span style="color:#8b9bb2">显示模式「黑边」：保持比例、四周留黑边，画面不变形（推荐）。</span>`;
       }
     }catch(e){}
-    /* 「当前灵敏度」越界：必须明确告知实际用了多少，不能静默夹取 */
+    /* 「当前灵敏度」越界：必须明确告知实际用了多少，不能静默夹取。
+       只对超出固定灵敏度范围（SENS_LO~SENS_HI）的值触发，因此高 DPI 玩家
+       （例如 2400 DPI × 灵敏度 5）不会再被误判为「填了 eDPI」。 */
     if (cfg.startSensClamped){
-      warn += `<br><span style="color:#ffb454">⚠ 「当前灵敏度」填的 <b>${fmtNum(cfg.startSensClamped.raw)}</b> 超出合理范围 `
-        + `<b>${bounds.lo} ~ ${bounds.hi}</b>（按 DPI ${dpi} 换算），将按 <b>${cfg.startSensClamped.used}</b> 处理。<br>`
-        + `　这个框要填的是<b>游戏内灵敏度</b>，不是 eDPI。${cfg.startSensClamped.raw > bounds.hi*2 ? '（看起来像是填了 eDPI：eDPI ' + fmtNum(cfg.startSensClamped.raw) + ' 在 DPI ' + dpi + ' 下约等于灵敏度 ' + fmtNum(cfg.startSensClamped.raw/dpi) + '）' : ''}</span>`;
+      warn += `<br><span style="color:#ffb454">⚠ 「当前灵敏度」填的 <b>${fmtNum(cfg.startSensClamped.raw)}</b> 超出可用范围 `
+        + `<b>${bounds.lo} ~ ${bounds.hi}</b>，将按 <b>${cfg.startSensClamped.used}</b> 处理。<br>`
+        + `　这个框要填的是<b>游戏内灵敏度</b>，不是 eDPI。${cfg.startSensClamped.raw > bounds.hi ? '（看起来像是填了 eDPI：eDPI ' + fmtNum(cfg.startSensClamped.raw) + ' 在 DPI ' + dpi + ' 下约等于灵敏度 ' + fmtNum(cfg.startSensClamped.raw/dpi) + '）' : ''}</span>`;
     }
     /* 自定义比例填错时的提示（会回退到 16:9，必须让用户看见） */
     if (cfg.aspectBad){
@@ -4323,7 +4346,7 @@ function buildSummary(){
     }
   }
   if (cfg.fov > 110) L.push('注意：FOV ' + cfg.fov + ' 依赖 cl_fovScale 配置，请确认游戏内已生效。');
-  L.push('（由 Apex 灵敏度实验台生成）');
+  L.push('（由 Apex 灵敏度实验台 ' + APP_VERSION + ' 生成）');
   return L.join('\n');
 }
 function fallbackCopy(t){
@@ -4403,6 +4426,8 @@ function openFeedbackIssue(){
   try{ window.open(url, '_blank', 'noopener'); }
   catch(e){ location.href = url; }
 }
+/* 页脚里的版本号：由 APP_VERSION 注入，避免硬编码散落各处 */
+document.querySelectorAll('[data-ver]').forEach(el=>{ el.textContent = APP_VERSION; });
 /* 页脚里的仓库链接：由 data-slug 生成，避免硬编码散落各处 */
 document.querySelectorAll('[data-slug]').forEach(el=>{
   const slug = el.getAttribute('data-slug');

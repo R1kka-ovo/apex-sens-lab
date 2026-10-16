@@ -19,7 +19,8 @@ const fs = require('fs');
 const path = require('path');
 
 const DEG_PER_COUNT = 0.022;
-const CM_LO = 8, CM_HI = 120;          /* 合理的 cm/360 区间（8~120 cm） */
+const CM_LO = 8, CM_HI = 120;          /* cm/360 的「常见」区间，仅作参考提示，不判失败 */
+const SENS_LO = 0.02, SENS_HI = 25;    /* 工具可用的游戏内灵敏度范围（与 DPI 无关） */
 const SCHEMA_EXPECT = 1;
 
 const errors = [];
@@ -93,14 +94,26 @@ if (rec !== null && dpi){
   else {
     const cm = 360 * 2.54 / (DEG_PER_COUNT * dpi * rec);
     note(`推荐值 ${rec} @ DPI ${dpi} → eDPI ${Math.round(dpi*rec)}，cm/360 ≈ ${cm.toFixed(2)} cm`);
+    /* cm/360 的「常见区间」只作为参考提示，不作为错误。
+       注意：高 DPI 玩家用小数值灵敏度是完全正常的（2400 DPI × 灵敏度 5 的
+       eDPI 是 12000、cm/360 只有 3.5 cm），所以这里不会据此判失败。
+       真正值得怀疑的是「灵敏度值本身」是否落在固定可用范围内。 */
     if (cm < CM_LO){
-      warn(`cm/360 只有 ${cm.toFixed(1)} cm，快于常见范围（< ${CM_LO} cm）。像是「起点被夹取」或填了 eDPI 造成的错位，建议核对「当前灵敏度」填的是游戏内灵敏度。`);
+      warn(`cm/360 只有 ${cm.toFixed(1)} cm，比常见范围（${CM_LO}~${CM_HI} cm）更快。`
+        + `高 DPI 玩家这样设置是正常的；但如果这不是你的预期，请核对 DPI 与「当前灵敏度」。`);
     } else if (cm > CM_HI){
-      warn(`cm/360 达到 ${cm.toFixed(1)} cm，慢于常见范围（> ${CM_HI} cm）。建议核对 DPI 与「当前灵敏度」。`);
+      warn(`cm/360 达到 ${cm.toFixed(1)} cm，比常见范围（${CM_LO}~${CM_HI} cm）更慢。请核对 DPI 与「当前灵敏度」。`);
     }
   }
 } else if (rec !== null){
   warn('缺少 DPI（cfg.dpi），无法换算 cm/360 做合理性检查。');
+}
+
+/* 灵敏度值本身是否在工具的可用范围内（这是硬性的，与 DPI 无关） */
+if (rec !== null){
+  if (rec < SENS_LO || rec > SENS_HI){
+    warn(`推荐值 ${rec} 落在工具可用灵敏度范围 ${SENS_LO} ~ ${SENS_HI} 之外，这份记录可能来自旧版本（旧版本的上下限是按 DPI 反推的，会挡住高 DPI 玩家）。建议用最新版本重测。`);
+  } else note(`推荐值在可用灵敏度范围内（${SENS_LO} ~ ${SENS_HI}）`);
 }
 
 /* 区间是否包含推荐值、是否单调 */
